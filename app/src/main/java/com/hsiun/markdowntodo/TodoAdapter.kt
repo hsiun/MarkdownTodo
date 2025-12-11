@@ -199,8 +199,13 @@ class TodoAdapter(
         filteredTodos.clear()
         when (displayMode) {
             DisplayMode.ALL -> {
-                filteredTodos.addAll(todos.sortedBy { it.id })
-                Log.d("TodoAdapter", "显示全部: ${todos.size} 条")
+                // 未完成的排在前面
+                val activeTodos = todos.filter { !it.isCompleted }.sortedBy { it.id }
+                // 已完成的排在后面
+                val completedTodos = todos.filter { it.isCompleted }.sortedBy { it.id }
+                filteredTodos.addAll(activeTodos)
+                filteredTodos.addAll(completedTodos)
+                Log.d("TodoAdapter", "显示全部: 未完成 ${activeTodos.size} 条, 已完成 ${completedTodos.size} 条")
             }
             DisplayMode.ACTIVE -> {
                 val activeTodos = todos.filter { !it.isCompleted }
