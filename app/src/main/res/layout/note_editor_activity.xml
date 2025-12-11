@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="?android:attr/colorPrimary">
+
+        <EditText
+            android:id="@+id/noteTitleEditText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="笔记标题"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:background="@android:color/transparent"
+            android:textColor="@android:color/white"
+            android:imeOptions="actionDone" />
+
+        <ImageButton
+            android:id="@+id/saveNoteButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@android:drawable/ic_menu_save"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="保存笔记" />
+
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/noteContentEditText"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:hint="输入笔记内容..."
+        android:padding="16dp"
+        android:gravity="top"
+        android:background="@android:color/white"
+        android:textSize="16sp"
+        android:inputType="textMultiLine"
+        android:lines="10"
+        android:minLines="10"
+        android:scrollbars="vertical" />
+
+</LinearLayout>
