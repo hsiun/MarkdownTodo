@@ -28,7 +28,7 @@
             app:buttonTint="@color/checkbox_tint" />
 
         <!-- 修改3: 将待办条目字体放大 -->
-        <!-- 优化字体渲染 -->
+        <!-- 优化字体渲染，实现自适应高度 -->
         <TextView
             android:id="@+id/titleText"
             android:layout_width="0dp"
@@ -36,17 +36,20 @@
             android:layout_weight="1"
             android:textSize="18sp"
             android:textColor="#333333"
-            android:maxLines="1"
-            android:ellipsize="end"
             android:gravity="center_vertical"
-            android:paddingVertical="4dp"
+            android:paddingVertical="1dp"
             android:fontFamily="sans-serif"
             android:textStyle="normal"
             android:letterSpacing="0.02"
             android:includeFontPadding="false"
             android:lineSpacingMultiplier="1.0"
             android:textAllCaps="false"
-            android:singleLine="true"/>
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:singleLine="false"
+            android:minLines="1"
+            />
+
 
         <!-- 删除按钮（默认隐藏） -->
         <ImageButton
@@ -58,7 +61,7 @@
             android:src="@drawable/ic_delete"
             android:contentDescription="删除"
             android:visibility="gone"
-        app:tint="#FF3B30" />
+            app:tint="#FF3B30" />
 
     </LinearLayout>
 
