@@ -22,6 +22,10 @@ import android.util.Log
 import android.view.inputmethod.EditorInfo
 import android.content.Context
 import android.view.inputmethod.InputMethodManager
+import android.os.Handler
+import android.os.Looper
+import java.text.SimpleDateFormat
+import java.util.*
 
 
 class MainActivity : AppCompatActivity() {
@@ -54,6 +58,9 @@ class MainActivity : AppCompatActivity() {
 
     // ItemTouchHelper 用于实现左滑删除
     private lateinit var itemTouchHelper: ItemTouchHelper
+
+    // 调试信息窗口
+    private var debugDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,7 +95,84 @@ class MainActivity : AppCompatActivity() {
         // 检查是否需要初始化Git仓库
         setupGitSync()
 
+        // 设置下拉刷新
+        setupSwipeRefresh()
+
         Log.d("MainActivity", "应用启动完成")
+    }
+
+    private fun setupSwipeRefresh() {
+        // 设置下拉刷新颜色
+        binding.swipeRefreshLayout.setColorSchemeColors(
+            Color.parseColor("#865EDC"),  // 主色调
+            Color.parseColor("#1A73E8"),  // 蓝色
+            Color.parseColor("#4CAF50")   // 绿色
+        )
+
+        // 设置下拉刷新监听器
+        binding.swipeRefreshLayout.setOnRefreshListener {
+            performSyncWithDebug(true)
+        }
+
+        // 设置下拉刷新进度背景
+        binding.swipeRefreshLayout.setProgressBackgroundColorSchemeColor(Color.parseColor("#FFFFFF"))
+    }
+
+    private fun performSyncWithDebug(isManualRefresh: Boolean = false) {
+        if (isSyncing) {
+            // 如果正在同步，停止刷新动画
+            binding.swipeRefreshLayout.isRefreshing = false
+            return
+        }
+
+        // 显示调试信息窗口
+        showDebugInfo("开始同步...", isManualRefresh)
+
+        // 更新同步状态指示器
+        updateSyncIndicator("正在同步...", Color.parseColor("#FF9800"))
+
+        performSync()
+    }
+
+    private fun showDebugInfo(message: String, isManualRefresh: Boolean = false) {
+        // 如果不是手动刷新且不是第一次同步，不显示调试信息
+        if (!isManualRefresh && !isFirstSync) {
+            return
+        }
+
+        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        val debugMessage = "[$timestamp] $message"
+
+        Log.d("DebugInfo", debugMessage)
+
+    }
+
+
+
+    private fun updateSyncIndicator(status: String = "", color: Int? = null) {
+        runOnUiThread {
+            if (status.isNotEmpty()) {
+                binding.syncStatusText.text = when {
+                    status.contains("正在同步") -> "🔄"
+                    status.contains("成功") -> "✅"
+                    status.contains("失败") -> "❌"
+                    status.contains("未连接") -> "⚪"
+                    else -> "⚪"
+                }
+            }
+
+            if (color != null) {
+                binding.syncStatusText.setTextColor(color)
+            }
+
+            // 自动清除状态
+            if (status.isNotEmpty() && !status.contains("正在同步")) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    binding.syncStatusText.text = "⚪"
+                    binding.syncStatusText.setTextColor(Color.parseColor("#666666"))
+                }, 3000)
+            }
+        }
     }
 
     private fun loadGitConfig() {
@@ -152,13 +236,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun initGitRepo() {
         isSyncing = true
-        updateSyncIndicator()
+        updateSyncIndicator("正在初始化...", Color.parseColor("#FF9800"))
 
         gitManager.initAndCloneRepo(
             onSuccess = {
                 runOnUiThread {
                     isSyncing = false
-                    updateSyncIndicator()
+                    binding.swipeRefreshLayout.isRefreshing = false
+                    updateSyncIndicator("初始化成功", Color.parseColor("#4CAF50"))
                     Toast.makeText(this, "Git仓库初始化成功", Toast.LENGTH_SHORT).show()
                     performSync()
                 }
@@ -166,7 +251,8 @@ class MainActivity : AppCompatActivity() {
             onError = { error ->
                 runOnUiThread {
                     isSyncing = false
-                    updateSyncIndicator()
+                    binding.swipeRefreshLayout.isRefreshing = false
+                    updateSyncIndicator("初始化失败", Color.parseColor("#F44336"))
                     if (error.contains("网络不可用")) {
                         Toast.makeText(this, "网络不可用，将使用本地模式", Toast.LENGTH_LONG).show()
                     } else {
@@ -292,6 +378,7 @@ class MainActivity : AppCompatActivity() {
         binding.fab.setOnClickListener {
             showAddTodoDialog()
         }
+
     }
 
     private fun showAddTodoDialog() {
@@ -397,7 +484,8 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
-    // 修改 showSettingsDialog 方法，确保保存后更新显示模式
+
+    // 修改 showSettingsDialog 方法，添加调试按钮
     private fun showSettingsDialog() {
         // 加载设置对话框布局
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null)
@@ -444,6 +532,7 @@ class MainActivity : AppCompatActivity() {
         cancelButton.setOnClickListener {
             dialog.dismiss()
         }
+
 
         dialog.show()
     }
@@ -518,37 +607,68 @@ class MainActivity : AppCompatActivity() {
     private fun performSync() {
         // 如果没有配置Git，不进行同步
         if (GITHUB_REPO_URL.isEmpty() || GITHUB_TOKEN.isEmpty()) {
+            runOnUiThread {
+                binding.swipeRefreshLayout.isRefreshing = false
+                updateSyncIndicator("未配置", Color.parseColor("#F44336"))
+                showDebugInfo("同步失败：未配置Git仓库")
+            }
             return
         }
 
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastSyncTime < SYNC_COOLDOWN) {
+            runOnUiThread {
+                binding.swipeRefreshLayout.isRefreshing = false
+                updateSyncIndicator("同步间隔太短", Color.parseColor("#FF9800"))
+                showDebugInfo("同步失败：同步间隔太短")
+            }
             return
         }
 
         if (isSyncing) {
+            runOnUiThread {
+                binding.swipeRefreshLayout.isRefreshing = false
+                updateSyncIndicator("正在同步中", Color.parseColor("#FF9800"))
+                showDebugInfo("同步失败：正在同步中")
+            }
             return
         }
 
         isSyncing = true
         lastSyncTime = currentTime
-        updateSyncIndicator()
+        showDebugInfo("开始同步流程...")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                showDebugInfo("检查仓库目录...")
+                val repoDir = File(filesDir, "git_repo")
+                val gitConfig = File(repoDir, ".git/config")
+
+                if (!gitConfig.exists()) {
+                    showDebugInfo("Git仓库未初始化，重新初始化...")
+                    runOnUiThread {
+                        initGitRepo()
+                    }
+                    return@launch
+                }
+
                 gitManager.pullChanges(
                     onSuccess = { pullResult ->
                         // 合并前先保存当前本地状态
                         val currentLocalTodos = readTodosFromFile(todoFile)
+                        showDebugInfo("拉取成功，当前本地有 ${currentLocalTodos.size} 条待办")
 
                         // 智能合并
                         val mergedTodos = mergeTodosIntelligently()
+                        showDebugInfo("合并后共有 ${mergedTodos.size} 条待办")
 
                         // 保存合并后的结果到本地文件
                         saveTodosToFile(mergedTodos, todoFile)
                         // 同时也保存到Git仓库目录
                         val remoteFile = File(filesDir, "git_repo/todos.md")
                         saveTodosToFile(mergedTodos, remoteFile)
+
+                        showDebugInfo("文件保存完成")
 
                         runOnUiThread {
                             // 使用适配器的 updateTodos 方法更新列表
@@ -569,7 +689,9 @@ class MainActivity : AppCompatActivity() {
                             updateEmptyView()
 
                             isSyncing = false
-                            updateSyncIndicator()
+                            binding.swipeRefreshLayout.isRefreshing = false
+                            updateSyncIndicator("同步成功", Color.parseColor("#4CAF50"))
+                            showDebugInfo("同步完成！共 ${mergedTodos.size} 条待办")
 
                             if (BuildConfig.DEBUG) {
                                 Toast.makeText(this@MainActivity, "同步成功，共 ${mergedTodos.size} 条待办", Toast.LENGTH_SHORT).show()
@@ -581,13 +703,19 @@ class MainActivity : AppCompatActivity() {
                     onError = { error ->
                         runOnUiThread {
                             isSyncing = false
-                            updateSyncIndicator()
+                            binding.swipeRefreshLayout.isRefreshing = false
 
                             if (error.contains("网络不可用")) {
+                                updateSyncIndicator("网络不可用", Color.parseColor("#F44336"))
+                                showDebugInfo("同步失败：网络不可用")
                                 // 网络不可用时不提示
                             } else if (error.contains("Git仓库未初始化")) {
+                                updateSyncIndicator("未初始化", Color.parseColor("#F44336"))
+                                showDebugInfo("同步失败：Git仓库未初始化，重新初始化...")
                                 initGitRepo()
                             } else {
+                                updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
+                                showDebugInfo("同步失败：$error")
                                 if (BuildConfig.DEBUG) {
                                     Toast.makeText(this@MainActivity, "同步失败: $error", Toast.LENGTH_LONG).show()
                                 }
@@ -598,7 +726,9 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 runOnUiThread {
                     isSyncing = false
-                    updateSyncIndicator()
+                    binding.swipeRefreshLayout.isRefreshing = false
+                    updateSyncIndicator("同步异常", Color.parseColor("#F44336"))
+                    showDebugInfo("同步异常: ${e.message}")
                     Toast.makeText(this@MainActivity, "同步异常: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
@@ -615,6 +745,8 @@ class MainActivity : AppCompatActivity() {
             emptyList()
         }
 
+        showDebugInfo("本地待办: ${localTodos.size} 条，远程待办: ${remoteTodos.size} 条")
+
         val mergedMap = mutableMapOf<String, TodoItem>()
 
         // 先添加远程的所有项目
@@ -622,10 +754,14 @@ class MainActivity : AppCompatActivity() {
             mergedMap[todo.uuid] = todo
         }
 
+        showDebugInfo("添加远程待办后: ${mergedMap.size} 条")
+
         // 然后添加本地的所有项目（本地项目会覆盖远程的同UUID项目）
         localTodos.forEach { todo ->
             mergedMap[todo.uuid] = todo
         }
+
+        showDebugInfo("添加本地待办后: ${mergedMap.size} 条")
 
         // 转换回列表并按ID排序
         return mergedMap.values.sortedBy { it.id }
@@ -645,6 +781,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.e("MainActivity", "读取待办文件失败", e)
+                showDebugInfo("读取文件失败: ${e.message}")
                 emptyList()
             }
         } else {
@@ -664,14 +801,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e("MainActivity", "保存文件失败", e)
-        }
-    }
-
-    private fun updateSyncIndicator() {
-        if (isSyncing) {
-            Log.d("MainActivity", "正在同步...")
-        } else {
-            Log.d("MainActivity", "同步完成")
+            showDebugInfo("保存文件失败: ${e.message}")
         }
     }
 
@@ -697,13 +827,15 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                showDebugInfo("自动推送: $operation")
+
                 // 将本地待办事项文件复制到Git仓库目录
                 val localTodoFile = todoFile
                 val remoteTodoFile = File(repoDir, "todos.md")
 
                 if (localTodoFile.exists()) {
                     localTodoFile.copyTo(remoteTodoFile, overwrite = true)
-                    Log.d("MainActivity", "已复制待办事项文件到Git目录")
+                    showDebugInfo("已复制待办事项文件到Git目录")
                 }
 
                 // 直接提交和推送，不再调用 performSync
@@ -711,13 +843,16 @@ class MainActivity : AppCompatActivity() {
                     commitMessage = "$operation 待办事项 - ${System.currentTimeMillis()}",
                     onSuccess = {
                         runOnUiThread {
-                            Log.d("MainActivity", "自动推送成功: $operation")
+                            showDebugInfo("自动推送成功: $operation")
+                            updateSyncIndicator("推送成功", Color.parseColor("#4CAF50"))
                             Toast.makeText(this@MainActivity, "已同步到云端", Toast.LENGTH_SHORT).show()
                         }
                     },
                     onError = { error ->
+                        showDebugInfo("自动推送失败: $error")
                         if (BuildConfig.DEBUG) {
                             runOnUiThread {
+                                updateSyncIndicator("推送失败", Color.parseColor("#F44336"))
                                 Toast.makeText(this@MainActivity, "自动推送失败: $error", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -725,6 +860,7 @@ class MainActivity : AppCompatActivity() {
                 )
             } catch (e: Exception) {
                 Log.e("MainActivity", "自动推送异常", e)
+                showDebugInfo("自动推送异常: ${e.message}")
             }
         }
     }
@@ -813,13 +949,13 @@ class MainActivity : AppCompatActivity() {
 
         when (displayMode) {
             TodoAdapter.DisplayMode.ALL -> {
-                binding.emptyView.text = "暂无待办事项\n点击右下角+号添加待办"
+                binding.emptyView.text = "暂无待办事项\n点击右下角+号添加待办\n下拉刷新可同步云端数据"
             }
             TodoAdapter.DisplayMode.ACTIVE -> {
-                binding.emptyView.text = "暂无未完成待办\n所有任务已完成！"
+                binding.emptyView.text = "暂无未完成待办\n所有任务已完成！\n下拉刷新可同步云端数据"
             }
             TodoAdapter.DisplayMode.COMPLETED -> {
-                binding.emptyView.text = "暂无已完成待办"
+                binding.emptyView.text = "暂无已完成待办\n下拉刷新可同步云端数据"
             }
         }
 
@@ -872,5 +1008,10 @@ class MainActivity : AppCompatActivity() {
         if (::gitManager.isInitialized) {
             gitManager.cleanup()
         }
+        debugDialog?.dismiss()
+    }
+
+    companion object {
+        private var isFirstSync = true
     }
 }

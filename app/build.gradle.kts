@@ -53,9 +53,8 @@ dependencies {
 
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
-    // 关键：添加 Apache HttpClient 的依赖
-//    implementation("org.apache.httpcomponents.client5:httpclient5:5.3.6")
-//    implementation("org.apache.httpcomponents.core5:httpcore5:5.3.6")
-//    implementation("org.apache.httpcomponents.core5:httpcore5-h2:5.3.6")
+    //implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r") // 小米稳定
+    implementation ("org.eclipse.jgit:org.eclipse.jgit:5.13.0.202109080827-r")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+
 }

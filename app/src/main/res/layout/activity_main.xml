@@ -40,6 +40,16 @@
                     android:textStyle="normal"
                     android:paddingStart="8dp" />
 
+                <!-- 修改：添加同步状态指示器 -->
+                <TextView
+                    android:id="@+id/syncStatusText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚪"
+                    android:textSize="12sp"
+                    android:textColor="#666666"
+                    android:layout_marginEnd="8dp" />
+
                 <TextView
                     android:id="@+id/todoCountText"
                     android:layout_width="wrap_content"
@@ -82,16 +92,24 @@
             android:paddingHorizontal="16dp"
             android:drawablePadding="8dp"/>
 
-        <!-- 待办事项列表 -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerView"
+        <!-- 添加：下拉刷新容器 -->
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefreshLayout"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:background="#FFFFFF"
-            android:paddingHorizontal="2dp"
-            android:paddingVertical="1dp"
-            android:clipToPadding="false" />
+            android:layout_weight="1">
+
+            <!-- 待办事项列表 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#FFFFFF"
+                android:paddingHorizontal="2dp"
+                android:paddingVertical="1dp"
+                android:clipToPadding="false" />
+
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         <!-- 笔记 -->
         <androidx.recyclerview.widget.RecyclerView
@@ -148,7 +166,6 @@
                 android:drawableTop="@drawable/ic_todo_filled" />
 
         </LinearLayout>
-
 
     </LinearLayout>
 

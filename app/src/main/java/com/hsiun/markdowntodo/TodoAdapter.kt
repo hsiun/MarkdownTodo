@@ -199,8 +199,8 @@ class TodoAdapter(
         filteredTodos.clear()
         when (displayMode) {
             DisplayMode.ALL -> {
-                // 未完成的排在前面
-                val activeTodos = todos.filter { !it.isCompleted }.sortedBy { it.id }
+                // 未完成的排在前面，新添加的排前面
+                val activeTodos = todos.filter { !it.isCompleted }.sortedBy { it.id }.reversed()
                 // 已完成的排在后面
                 val completedTodos = todos.filter { it.isCompleted }.sortedBy { it.id }
                 filteredTodos.addAll(activeTodos)
@@ -209,12 +209,12 @@ class TodoAdapter(
             }
             DisplayMode.ACTIVE -> {
                 val activeTodos = todos.filter { !it.isCompleted }
-                filteredTodos.addAll(activeTodos.sortedBy { it.id })
+                filteredTodos.addAll(activeTodos.sortedBy { it.id }.reversed())
                 Log.d("TodoAdapter", "显示未完成: ${activeTodos.size} 条, 总共: ${todos.size} 条")
             }
             DisplayMode.COMPLETED -> {
                 val completedTodos = todos.filter { it.isCompleted }
-                filteredTodos.addAll(completedTodos.sortedBy { it.id })
+                filteredTodos.addAll(completedTodos.sortedBy { it.id }.reversed())
                 Log.d("TodoAdapter", "显示已完成: ${completedTodos.size} 条, 总共: ${todos.size} 条")
             }
         }
