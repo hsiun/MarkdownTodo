@@ -705,10 +705,30 @@ class MainActivity : AppCompatActivity() {
                             isSyncing = false
                             binding.swipeRefreshLayout.isRefreshing = false
 
-                            if (error.contains("网络不可用")) {
+                            if (error.contains("Checkout conflict with files")) {
+                                // 这是冲突处理后的重新同步
+                                showDebugInfo("检测到冲突，正在重新同步...")
+                                updateSyncIndicator("重新同步中...", Color.parseColor("#FF9800"))
+                                // 在后台线程处理冲突
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    try {
+                                        // 删除本地git仓库目录
+                                        if (repoDir.exists()) {
+                                            repoDir.deleteRecursively()
+                                            showDebugInfo("已删除本地冲突仓库")
+                                        }
+
+
+                                    } catch (e: Exception) {
+                                        showDebugInfo("处理冲突失败: ${e.message}")
+                                        runOnUiThread {
+                                            updateSyncIndicator("冲突处理失败", Color.parseColor("#F44336"))
+                                        }
+                                    }
+                                }
+                            } else if (error.contains("网络不可用")) {
                                 updateSyncIndicator("网络不可用", Color.parseColor("#F44336"))
                                 showDebugInfo("同步失败：网络不可用")
-                                // 网络不可用时不提示
                             } else if (error.contains("Git仓库未初始化")) {
                                 updateSyncIndicator("未初始化", Color.parseColor("#F44336"))
                                 showDebugInfo("同步失败：Git仓库未初始化，重新初始化...")
@@ -735,10 +755,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 修改 mergeTodosIntelligently 方法
     private fun mergeTodosIntelligently(): List<TodoItem> {
         val localTodos = readTodosFromFile(todoFile)
         val remoteFile = File(filesDir, "git_repo/todos.md")
+
+        // 读取并显示远程文件内容
+        val remoteContent = if (remoteFile.exists()) {
+            remoteFile.readText()
+        } else {
+            ""
+        }
+
+        Log.d("MainActivity", "远程文件内容:\n$remoteContent")
+
         val remoteTodos = if (remoteFile.exists()) {
             readTodosFromFile(remoteFile)
         } else {
@@ -747,21 +776,49 @@ class MainActivity : AppCompatActivity() {
 
         showDebugInfo("本地待办: ${localTodos.size} 条，远程待办: ${remoteTodos.size} 条")
 
+        // 详细检查每个待办的状态
+        remoteTodos.forEach { todo ->
+            Log.d("MainActivity", "远程待办 ${todo.id}: '${todo.title}' - 完成状态: ${todo.isCompleted}")
+        }
+
         val mergedMap = mutableMapOf<String, TodoItem>()
 
-        // 先添加远程的所有项目
-        remoteTodos.forEach { todo ->
-            mergedMap[todo.uuid] = todo
+        // 先添加远程的所有项目，远程优先
+        remoteTodos.forEach { remoteTodo ->
+            mergedMap[remoteTodo.uuid] = remoteTodo
         }
 
         showDebugInfo("添加远程待办后: ${mergedMap.size} 条")
 
-        // 然后添加本地的所有项目（本地项目会覆盖远程的同UUID项目）
-        localTodos.forEach { todo ->
-            mergedMap[todo.uuid] = todo
+        // 然后处理本地的项目
+        localTodos.forEach { localTodo ->
+            val existingTodo = mergedMap[localTodo.uuid]
+
+            if (existingTodo == null) {
+                // 远程没有这个待办，添加本地待办
+                mergedMap[localTodo.uuid] = localTodo
+                showDebugInfo("添加新本地待办: ID=${localTodo.id}, 标题='${localTodo.title}'")
+            } else {
+                // 远程有这个待办，需要合并
+                // 关键修改：如果远程已完成，则优先使用远程状态
+                if (existingTodo.isCompleted) {
+                    // 如果远程已完成，则本地也标记为已完成
+                    val mergedTodo = localTodo.copy(isCompleted = true)
+                    mergedMap[localTodo.uuid] = mergedTodo
+                    showDebugInfo("待办 ${localTodo.id} - '${localTodo.title}' 已同步为已完成状态")
+                } else if (localTodo.isCompleted && !existingTodo.isCompleted) {
+                    // 如果本地已完成而远程未完成，保留本地完成状态
+                    mergedMap[localTodo.uuid] = localTodo
+                    showDebugInfo("待办 ${localTodo.id} - '${localTodo.title}' 保持本地已完成状态")
+                } else {
+                    // 其他情况（都未完成），保留本地待办
+                    mergedMap[localTodo.uuid] = localTodo
+                    showDebugInfo("待办 ${localTodo.id} - '${localTodo.title}' 保持未完成状态")
+                }
+            }
         }
 
-        showDebugInfo("添加本地待办后: ${mergedMap.size} 条")
+        showDebugInfo("合并本地待办后: ${mergedMap.size} 条")
 
         // 转换回列表并按ID排序
         return mergedMap.values.sortedBy { it.id }

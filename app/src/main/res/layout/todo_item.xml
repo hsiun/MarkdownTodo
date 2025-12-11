@@ -3,8 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginVertical="4dp"
     android:layout_marginHorizontal="8dp"
+    android:layout_marginVertical="4dp"
     app:cardCornerRadius="8dp"
     app:cardElevation="1dp"
     app:cardUseCompatPadding="true">
@@ -13,53 +13,51 @@
         android:id="@+id/itemContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:background="?android:attr/selectableItemBackground"
         android:gravity="center_vertical"
-        android:paddingVertical="12dp"
-        android:paddingHorizontal="16dp"
-        android:background="?android:attr/selectableItemBackground">
+        android:minHeight="40dp"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp">
 
         <CheckBox
             android:id="@+id/checkbox"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="12dp"
+            android:layout_marginEnd="10dp"
             android:buttonTint="@color/checkbox_tint"
             app:buttonTint="@color/checkbox_tint" />
 
-        <!-- 修改3: 将待办条目字体放大 -->
-        <!-- 优化字体渲染，实现自适应高度 -->
+        <!-- 自适应高度 TextView -->
         <TextView
             android:id="@+id/titleText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textSize="18sp"
-            android:textColor="#333333"
-            android:gravity="center_vertical"
-            android:paddingVertical="1dp"
-            android:fontFamily="sans-serif"
-            android:textStyle="normal"
-            android:letterSpacing="0.02"
-            android:includeFontPadding="false"
-            android:lineSpacingMultiplier="1.0"
-            android:textAllCaps="false"
-            android:maxLines="2"
             android:ellipsize="end"
+            android:fontFamily="sans-serif"
+            android:gravity="start|center_vertical"
+            android:includeFontPadding="false"
+            android:letterSpacing="0.01"
+            android:lineSpacingMultiplier="1.0"
+            android:maxLines="2"
+            android:paddingVertical="2dp"
             android:singleLine="false"
-            android:minLines="1"
-            />
+            android:textAllCaps="false"
 
+            android:textColor="#333333"
+            android:textSize="16sp"
+            android:textStyle="normal" />
 
         <!-- 删除按钮（默认隐藏） -->
         <ImageButton
             android:id="@+id/deleteButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginStart="8dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
             android:background="?android:attr/selectableItemBackground"
-            android:src="@drawable/ic_delete"
             android:contentDescription="删除"
+            android:src="@drawable/ic_delete"
             android:visibility="gone"
             app:tint="#FF3B30" />
 

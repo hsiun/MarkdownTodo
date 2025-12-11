@@ -224,11 +224,22 @@ class TodoAdapter(
     fun getDisplayMode(): DisplayMode = displayMode
 
     fun updateTodos(newTodos: List<TodoItem>) {
+        // 更新内部列表
         todos.clear()
         todos.addAll(newTodos.sortedBy { it.id })
+
+        // 更新过滤列表
         updateFilteredList()
+
+        // 通知数据已更改
         notifyDataSetChanged()
+
         Log.d("TodoAdapter", "更新列表: 共 ${todos.size} 条待办, 显示 ${filteredTodos.size} 条")
+
+        // 详细日志输出，便于调试
+        todos.forEach { todo ->
+            Log.d("TodoAdapter", "待办 ${todo.id}: '${todo.title}' - 完成状态: ${todo.isCompleted}")
+        }
     }
 
     // 添加单个待办事项

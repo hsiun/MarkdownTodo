@@ -11,7 +11,7 @@ data class TodoItem(
     var title: String,
     var isCompleted: Boolean = false,
     val createdAt: String = SimpleDateFormat(
-        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd HH:mm:ss",
         Locale.getDefault()
     ).format(Date()),
     // 添加唯一标识符，防止同步冲突
@@ -25,36 +25,63 @@ data class TodoItem(
     companion object {
         fun fromMarkdownLine(line: String): TodoItem? {
             return try {
+                // 打印原始行以便调试
+                Log.d("TodoItem", "原始行: $line")
+
                 // 尝试新格式（带UUID）
                 val checkboxMatch = Regex("\\[([ x])\\] (.+?) \\| ID: (\\d+) \\| UUID: ([^ ]+) \\| Created: (.+)")
                     .find(line)
+
                 if (checkboxMatch != null) {
                     val (status, title, id, uuid, createdAt) = checkboxMatch.destructured
-                    Log.d("TodoItem", "解析新格式: ID=$id, UUID=$uuid")
+                    Log.d("TodoItem", "解析新格式成功: ID=$id, 状态字符='$status', 状态=${status == "x"}")
                     TodoItem(
                         id = id.toInt(),
                         title = title,
-                        isCompleted = status == "x",
+                        isCompleted = status.trim() == "x",  // 修复：确保状态字符不是空格
                         createdAt = createdAt,
                         uuid = uuid
                     )
                 } else {
-                    // 尝试旧格式（不带UUID）
-                    val oldCheckboxMatch = Regex("\\[([ x])\\] (.+?) \\| ID: (\\d+) \\| Created: (.+)")
+                    // 尝试更宽松的正则表达式
+                    val looseMatch = Regex("\\[(.)\\] (.+?) \\|.*ID: (\\d+).*")
                         .find(line)
-                    if (oldCheckboxMatch != null) {
-                        val (status, title, id, createdAt) = oldCheckboxMatch.destructured
-                        Log.d("TodoItem", "解析旧格式: ID=$id")
+
+                    if (looseMatch != null) {
+                        val (status, title, id) = looseMatch.destructured
+                        Log.d("TodoItem", "解析宽松格式: ID=$id, 状态字符='$status'")
                         TodoItem(
                             id = id.toInt(),
                             title = title,
-                            isCompleted = status == "x",
-                            createdAt = createdAt,
+                            isCompleted = status.trim() == "x",
+                            createdAt = SimpleDateFormat(
+                                "yyyy-MM-dd HH:mm",
+                                Locale.getDefault()
+                            ).format(Date()),
                             uuid = UUID.randomUUID().toString()
                         )
                     } else {
-                        Log.d("TodoItem", "无法解析行: $line")
-                        null
+                        // 尝试最简单的格式
+                        val simpleMatch = Regex("\\[(.)\\] (.+)")
+                            .find(line)
+
+                        if (simpleMatch != null) {
+                            val (status, title) = simpleMatch.destructured
+                            Log.d("TodoItem", "解析简单格式: 标题='$title', 状态字符='$status'")
+                            TodoItem(
+                                id = -1,
+                                title = title,
+                                isCompleted = status.trim() == "x",
+                                createdAt = SimpleDateFormat(
+                                    "yyyy-MM-dd HH:mm:ss",
+                                    Locale.getDefault()
+                                ).format(Date()),
+                                uuid = UUID.randomUUID().toString()
+                            )
+                        } else {
+                            Log.d("TodoItem", "无法解析任何格式的行: $line")
+                            null
+                        }
                     }
                 }
             } catch (e: Exception) {
