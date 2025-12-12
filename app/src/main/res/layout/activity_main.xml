@@ -178,8 +178,9 @@
         android:layout_marginEnd="38dp"
         android:layout_marginBottom="88dp"
         android:contentDescription="添加待办事项"
-        app:backgroundTint="#865EDC"
+        app:backgroundTint="#FFC107"
         app:layout_anchorGravity="bottom|end"
-        app:srcCompat="@drawable/ic_dialog_add" />
+        app:srcCompat="@drawable/ic_dialog_add"
+        app:tint="#FFFFFF"/>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -6,8 +6,9 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- 标题 -->
+    <!-- 标题（动态显示新增或编辑） -->
     <TextView
+        android:id="@+id/dialogTitleText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="新增待办"
@@ -40,6 +41,13 @@
             android:textColor="#333333" />
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- 隐藏的ID字段（用于编辑时识别） -->
+    <EditText
+        android:id="@+id/todoIdInput"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
 
     <!-- 设置提醒和完成按钮 -->
     <LinearLayout

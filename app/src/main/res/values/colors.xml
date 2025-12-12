@@ -7,4 +7,10 @@
     <!-- 添加字体颜色 -->
     <color name="todo_text_color">#FF333333</color>  <!-- 完全不透明的黑色 -->
     <color name="todo_text_color_completed">#FF757575</color>  <!-- 完全不透明的灰色 -->
+
+    <color name="colorPrimary">#865EDC</color>
+    <color name="colorPrimaryDark">#6A4CBA</color>
+    <color name="colorAccent">#FF4081</color>
+    <color name="colorTextPrimary">#212121</color>
+    <color name="colorTextSecondary">#757575</color>
 </resources>

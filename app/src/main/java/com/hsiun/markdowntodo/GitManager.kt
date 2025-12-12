@@ -14,7 +14,6 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.transport.CredentialsProvider
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import java.io.File
-import java.util.concurrent.locks.ReentrantLock
 
 class GitManager(
     private val context: Context,
@@ -29,8 +28,8 @@ class GitManager(
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val repoDir = File(context.filesDir, "git_repo")
 
-    // 添加锁机制，确保同一时间只有一个Git操作
-    private val gitLock = ReentrantLock()
+    // 使用 synchronized 替代 ReentrantLock，避免锁状态异常
+    private val lock = Any()
 
     private fun getCredentialsProvider(): CredentialsProvider {
         return UsernamePasswordCredentialsProvider("token", token)
@@ -40,15 +39,17 @@ class GitManager(
     fun initAndCloneRepo(onSuccess: () -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
-                gitLock.lock()
-                try {
-                    val normalUrl = repoUrl
-
+                synchronized(lock) {
                     Log.d(TAG, "开始克隆仓库到: ${repoDir.absolutePath}")
+
+                    // 如果目录已存在，先删除
+                    if (repoDir.exists()) {
+                        repoDir.deleteRecursively()
+                    }
 
                     // 使用JGit进行克隆
                     Git.cloneRepository()
-                        .setURI(normalUrl)
+                        .setURI(repoUrl)
                         .setDirectory(repoDir)
                         .setBranch(branch)
                         .setCredentialsProvider(getCredentialsProvider())
@@ -56,9 +57,10 @@ class GitManager(
                         .close()
 
                     Log.d(TAG, "克隆成功")
-                    withContext(Dispatchers.Main) { onSuccess() }
-                } finally {
-                    gitLock.unlock()
+                }
+
+                withContext(Dispatchers.Main) {
+                    onSuccess()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "克隆失败", e)
@@ -73,8 +75,7 @@ class GitManager(
     fun pullChanges(onSuccess: (PullResult) -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
-                gitLock.lock()
-                try {
+                synchronized(lock) {
                     val repository = FileRepositoryBuilder()
                         .setGitDir(File(repoDir, ".git"))
                         .build()
@@ -88,14 +89,15 @@ class GitManager(
                                 .call()
 
                             if (pullResult.isSuccessful) {
-                                withContext(Dispatchers.Main) { onSuccess(pullResult) }
+                                // 确保在主线程回调
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    onSuccess(pullResult)
+                                }
                             } else {
                                 throw Exception("拉取失败或有冲突")
                             }
                         }
                     }
-                } finally {
-                    gitLock.unlock()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "拉取失败", e)
@@ -114,8 +116,7 @@ class GitManager(
     ) {
         coroutineScope.launch {
             try {
-                gitLock.lock()
-                try {
+                synchronized(lock) {
                     val repository = FileRepositoryBuilder()
                         .setGitDir(File(repoDir, ".git"))
                         .build()
@@ -154,11 +155,12 @@ class GitManager(
                                 .call()
 
                             Log.d(TAG, "推送成功")
-                            withContext(Dispatchers.Main) { onSuccess() }
                         }
                     }
-                } finally {
-                    gitLock.unlock()
+                }
+
+                withContext(Dispatchers.Main) {
+                    onSuccess()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "推送失败", e)

@@ -16,7 +16,8 @@ import androidx.recyclerview.widget.RecyclerView
 class TodoAdapter(
     private var todos: MutableList<TodoItem>,
     private val onTodoChanged: (TodoItem) -> Unit,
-    private val onTodoDeleted: (TodoItem) -> Unit
+    private val onTodoDeleted: (TodoItem) -> Unit,
+    private val onTodoClicked: (TodoItem) -> Unit
 ) : RecyclerView.Adapter<TodoAdapter.ViewHolder>() {
 
     // 显示模式枚举
@@ -31,9 +32,6 @@ class TodoAdapter(
 
     // 添加一个标记，防止复选框事件循环
     private var isUpdating = false
-
-    // 添加当前正在滑动的position
-    private var swipedPosition = -1
 
     init {
         updateFilteredList()
@@ -68,9 +66,9 @@ class TodoAdapter(
         holder.titleText.text = todo.title
 
         // 优化字体渲染
-        holder.titleText.typeface = Typeface.DEFAULT  // 使用默认字体
+        holder.titleText.typeface = Typeface.DEFAULT
         holder.titleText.paintFlags = holder.titleText.paintFlags or
-                Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG  // 开启抗锯齿和子像素渲染
+                Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG
 
         // 移除旧的监听器，防止重复绑定
         holder.checkbox.setOnCheckedChangeListener(null)
@@ -87,7 +85,7 @@ class TodoAdapter(
             holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
         }
 
-        // 设置复选框监听器
+        // 设置复选框监听器 - 修复这里！！！
         holder.checkbox.setOnCheckedChangeListener { _, isChecked ->
             if (isUpdating) {
                 return@setOnCheckedChangeListener
@@ -95,11 +93,23 @@ class TodoAdapter(
 
             isUpdating = true
             try {
-                // 更新待办项的完成状态
-                todo.isCompleted = isChecked
+                // 重要：创建待办项的副本并更新状态
+                val updatedTodo = todo.copy(isCompleted = isChecked)
+
+                // 更新主列表中的待办项
+                val indexInTodos = todos.indexOfFirst { it.id == updatedTodo.id }
+                if (indexInTodos != -1) {
+                    todos[indexInTodos] = updatedTodo
+                }
+
+                // 更新过滤列表中的待办项
+                val indexInFiltered = filteredTodos.indexOfFirst { it.id == updatedTodo.id }
+                if (indexInFiltered != -1) {
+                    filteredTodos[indexInFiltered] = updatedTodo
+                }
 
                 // 通知外部（MainActivity）待办已更改
-                onTodoChanged(todo)
+                onTodoChanged(updatedTodo)
 
                 // 更新样式
                 if (isChecked) {
@@ -110,7 +120,7 @@ class TodoAdapter(
                     holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
                 }
 
-                // 如果设置为只显示未完成，当待办被标记为完成时，从过滤列表中移除
+                // 如果设置了只显示未完成，当待办被标记为完成时，从过滤列表中移除
                 if (displayMode == DisplayMode.ACTIVE && isChecked) {
                     // 延迟更新列表，避免在RecyclerView布局过程中修改
                     holder.itemView.post {
@@ -118,13 +128,12 @@ class TodoAdapter(
                         notifyDataSetChanged()
                     }
                 } else if (displayMode == DisplayMode.COMPLETED && !isChecked) {
-                    // 如果设置为只显示已完成，当待办被取消完成时，从过滤列表中移除
+                    // 如果设置了只显示已完成，当待办被取消完成时，从过滤列表中移除
                     holder.itemView.post {
                         updateFilteredList()
                         notifyDataSetChanged()
                     }
                 }
-                // 如果是显示全部模式，不需要更新列表，只需要更新当前项
             } finally {
                 isUpdating = false
             }
@@ -136,21 +145,14 @@ class TodoAdapter(
             if (currentPosition != RecyclerView.NO_POSITION) {
                 val currentTodo = getItemAtPosition(currentPosition)
                 if (currentTodo != null) {
-                    // 隐藏删除按钮
-                    holder.deleteButton.visibility = View.GONE
-                    // 通知删除
                     onTodoDeleted(currentTodo)
                 }
             }
         }
 
-        // 设置item点击事件（用于恢复滑动状态）
+        // 设置item点击事件（用于打开编辑对话框）
         holder.itemContainer.setOnClickListener {
-            // 如果当前有滑动的item，恢复它
-            if (swipedPosition != -1 && swipedPosition != holder.adapterPosition) {
-                notifyItemChanged(swipedPosition)
-                swipedPosition = -1
-            }
+            onTodoClicked(todo)
         }
     }
 
@@ -165,22 +167,11 @@ class TodoAdapter(
         }
     }
 
-    // 获取指定ID的待办事项在所有列表中的位置（用于更新后刷新）
     fun getPositionById(id: Int): Int {
         return filteredTodos.indexOfFirst { it.id == id }
     }
 
-    // 设置滑动状态
-    fun setSwipedPosition(position: Int) {
-        swipedPosition = position
-    }
-
-    // 重置滑动状态
-    fun resetSwipedPosition() {
-        swipedPosition = -1
-    }
-
-    // 修改 setDisplayMode 方法，添加日志并确保正确更新
+    // 设置显示模式
     fun setDisplayMode(mode: DisplayMode) {
         Log.d("TodoAdapter", "设置显示模式: 当前模式=$displayMode, 新模式=$mode")
 
@@ -199,22 +190,18 @@ class TodoAdapter(
         filteredTodos.clear()
         when (displayMode) {
             DisplayMode.ALL -> {
-                // 未完成的排在前面，新添加的排前面
-                val activeTodos = todos.filter { !it.isCompleted }.sortedBy { it.id }.reversed()
-                // 已完成的排在后面
-                val completedTodos = todos.filter { it.isCompleted }.sortedBy { it.id }
-                filteredTodos.addAll(activeTodos)
-                filteredTodos.addAll(completedTodos)
-                Log.d("TodoAdapter", "显示全部: 未完成 ${activeTodos.size} 条, 已完成 ${completedTodos.size} 条")
+                // 显示所有待办
+                filteredTodos.addAll(todos)
+                Log.d("TodoAdapter", "显示全部: ${todos.size} 条")
             }
             DisplayMode.ACTIVE -> {
                 val activeTodos = todos.filter { !it.isCompleted }
-                filteredTodos.addAll(activeTodos.sortedBy { it.id }.reversed())
+                filteredTodos.addAll(activeTodos)
                 Log.d("TodoAdapter", "显示未完成: ${activeTodos.size} 条, 总共: ${todos.size} 条")
             }
             DisplayMode.COMPLETED -> {
                 val completedTodos = todos.filter { it.isCompleted }
-                filteredTodos.addAll(completedTodos.sortedBy { it.id }.reversed())
+                filteredTodos.addAll(completedTodos)
                 Log.d("TodoAdapter", "显示已完成: ${completedTodos.size} 条, 总共: ${todos.size} 条")
             }
         }
@@ -226,7 +213,7 @@ class TodoAdapter(
     fun updateTodos(newTodos: List<TodoItem>) {
         // 更新内部列表
         todos.clear()
-        todos.addAll(newTodos.sortedBy { it.id })
+        todos.addAll(newTodos)
 
         // 更新过滤列表
         updateFilteredList()
@@ -235,20 +222,6 @@ class TodoAdapter(
         notifyDataSetChanged()
 
         Log.d("TodoAdapter", "更新列表: 共 ${todos.size} 条待办, 显示 ${filteredTodos.size} 条")
-
-        // 详细日志输出，便于调试
-        todos.forEach { todo ->
-            Log.d("TodoAdapter", "待办 ${todo.id}: '${todo.title}' - 完成状态: ${todo.isCompleted}")
-        }
-    }
-
-    // 添加单个待办事项
-    fun addTodo(todo: TodoItem) {
-        todos.add(todo)
-        todos.sortBy { it.id }
-        updateFilteredList()
-        notifyDataSetChanged()
-        Log.d("TodoAdapter", "添加待办: ID=${todo.id}, 标题='${todo.title}'")
     }
 
     // 移除单个待办事项
