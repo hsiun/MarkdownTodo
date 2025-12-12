@@ -33,7 +33,7 @@
                     android:layout_weight="1"
                     android:text="0 条待办"
                     android:textColor="#333333"
-                    android:textSize="18sp"
+                    android:textSize="28sp"
                     android:textStyle="bold" />
 
                 <TextView
