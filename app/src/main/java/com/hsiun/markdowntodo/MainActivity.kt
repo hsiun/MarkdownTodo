@@ -91,6 +91,9 @@ class MainActivity : AppCompatActivity(),
 
         // 更新页面数量显示
         updatePageCounts()
+        // 根据设置初始化TodoFragment的显示模式
+        val showCompleted = settingsManager.showCompletedTodos
+        updateTodoDisplayMode(showCompleted)
 
         Log.d("MainActivity", "应用启动完成")
     }
@@ -356,26 +359,7 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    override fun onSyncSuccess(message: String) {
-        runOnUiThread {
-            binding.swipeRefreshLayout.isRefreshing = false
-            updateSyncIndicator("同步成功", Color.parseColor("#4CAF50"))
-            Log.d("MainActivity", message)
 
-            // 重新加载数据
-            todoManager.loadLocalTodos()
-            noteManager.loadAllNotes()
-            updatePageCounts()
-        }
-    }
-
-    override fun onSyncError(error: String) {
-        runOnUiThread {
-            binding.swipeRefreshLayout.isRefreshing = false
-            updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
-            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
-        }
-    }
 
     override fun onSyncProgress(message: String) {
         Log.d("MainActivity", message)
@@ -383,6 +367,7 @@ class MainActivity : AppCompatActivity(),
 
     override fun onSyncStatusChanged(status: String) {
         runOnUiThread {
+            Log.d("MainActivity-Sync", "状态变化: $status")
             binding.syncStatusText.text = when {
                 status.contains("正在同步") -> "🔄"
                 status.contains("成功") -> "✅"
@@ -431,8 +416,34 @@ class MainActivity : AppCompatActivity(),
         lastSyncTime = currentTime
 
         if (!syncManager.performSync(isManualRefresh)) {
+            // 如果同步没有开始，重置状态
             isSyncing = false
             binding.swipeRefreshLayout.isRefreshing = false
+            updateSyncIndicator("同步未开始", Color.parseColor("#666666"))
+        }
+    }
+
+    // 同时确保 onSyncSuccess 和 onSyncError 都停止刷新
+    override fun onSyncSuccess(message: String) {
+        runOnUiThread {
+            binding.swipeRefreshLayout.isRefreshing = false
+            isSyncing = false
+            updateSyncIndicator("同步成功", Color.parseColor("#4CAF50"))
+            Log.d("MainActivity", message)
+
+            // 重新加载数据
+            todoManager.loadLocalTodos()
+            noteManager.loadAllNotes()
+            updatePageCounts()
+        }
+    }
+
+    override fun onSyncError(error: String) {
+        runOnUiThread {
+            binding.swipeRefreshLayout.isRefreshing = false
+            isSyncing = false
+            updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
+            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -529,6 +540,26 @@ class MainActivity : AppCompatActivity(),
         runOnUiThread {
             // 可以在这里更新UI显示模式
             Log.d("MainActivity", "显示设置变更: showCompleted=$showCompleted")
+            updateTodoDisplayMode(showCompleted)
+
+        }
+    }
+
+    private fun updateTodoDisplayMode(showCompleted: Boolean) {
+        // 找到当前的TodoFragment
+        val fragments = supportFragmentManager.fragments
+        for (fragment in fragments) {
+            if (fragment is TodoFragment) {
+                // 将布尔值转换为显示模式
+                val displayMode = if (showCompleted) {
+                    TodoAdapter.DisplayMode.ALL
+                } else {
+                    TodoAdapter.DisplayMode.ACTIVE
+                }
+
+                // 更新显示模式
+                fragment.setDisplayMode(displayMode)
+            }
         }
     }
 

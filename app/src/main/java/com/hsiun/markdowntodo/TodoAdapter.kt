@@ -30,6 +30,17 @@ class TodoAdapter(
     private var displayMode: DisplayMode = DisplayMode.ACTIVE
     private var filteredTodos: MutableList<TodoItem> = mutableListOf()
 
+    // 添加显示模式变化监听器
+    interface DisplayModeChangeListener {
+        fun onDisplayModeChanged(newMode: DisplayMode, itemCount: Int)
+    }
+
+    private var displayModeChangeListener: DisplayModeChangeListener? = null
+
+    fun setDisplayModeChangeListener(listener: DisplayModeChangeListener) {
+        this.displayModeChangeListener = listener
+    }
+
     // 添加一个标记，防止复选框事件循环
     private var isUpdating = false
 

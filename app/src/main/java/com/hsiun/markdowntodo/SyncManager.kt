@@ -7,6 +7,8 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 class SyncManager(
     private val context: Context,
@@ -20,6 +22,7 @@ class SyncManager(
         private const val TAG = "SyncManager"
         private const val SYNC_COOLDOWN = 5000L
         private const val GIT_REPO_DIR = "git_repo"
+        private const val SYNC_TIMEOUT = 30000L // 30秒超时
     }
 
     private var isSyncing = false
@@ -58,18 +61,23 @@ class SyncManager(
     }
 
     fun performSync(isManualRefresh: Boolean = false): Boolean {
+        Log.d(TAG, "performSync 开始, isManualRefresh=$isManualRefresh")
+
         if (isSyncing) {
+            Log.w(TAG, "同步正在进行，跳过")
             syncListener?.onSyncError("正在同步中")
             return false
         }
 
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastSyncTime < SYNC_COOLDOWN) {
+            Log.w(TAG, "同步间隔太短，跳过")
             syncListener?.onSyncError("同步间隔太短")
             return false
         }
 
         if (!::gitManager.isInitialized) {
+            Log.w(TAG, "GitManager 未初始化")
             syncListener?.onSyncError("Git未配置")
             return false
         }
@@ -88,17 +96,16 @@ class SyncManager(
                 val gitConfig = File(repoDir, ".git/config")
 
                 if (!gitConfig.exists()) {
+                    Log.d(TAG, "Git仓库不存在，初始化仓库")
                     initializeGitRepo()
                     return@launch
                 }
 
+                Log.d(TAG, "开始同步流程")
                 pullAndMergeChanges()
             } catch (e: Exception) {
-                isSyncing = false
-                CoroutineScope(Dispatchers.Main).launch {
-                    syncListener?.onSyncError("同步异常: ${e.message}")
-                    syncListener?.onSyncStatusChanged("同步失败")
-                }
+                Log.e(TAG, "同步过程中发生异常", e)
+                syncListener?.onSyncError("同步异常: ${e.message}")
             }
         }
 
@@ -129,74 +136,103 @@ class SyncManager(
         )
     }
 
-    // 修改同步方法以包含笔记
+    // 修改 pullAndMergeChanges 方法
     private suspend fun pullAndMergeChanges() {
-        gitManager.pullChanges(
-            onSuccess = { pullResult ->
-                syncScope.launch {
-                    try {
-                        syncListener?.onSyncProgress("拉取成功，正在合并数据...")
+        try {
+            val success = suspendCoroutine<Boolean> { continuation ->
+                gitManager.pullChanges(
+                    onSuccess = { pullResult ->
+                        syncScope.launch {
+                            try {
+                                syncListener?.onSyncProgress("拉取成功，正在合并数据...")
 
-                        // 合并待办事项
-                        val mergedTodos = mergeTodosIntelligently()
+                                // 合并待办事项
+                                val mergedTodos = mergeTodosIntelligently()
 
-                        // 合并笔记
-                        val mergedNotes = mergeNotesIntelligently()
+                                // 合并笔记
+                                val mergedNotes = mergeNotesIntelligently()
 
-                        // 更新本地数据
-                        todoManager.replaceAllTodos(mergedTodos)
-                        // 这里需要添加更新笔记的方法
-                        // noteManager.replaceAllNotes(mergedNotes)
+                                // 更新本地数据
+                                todoManager.replaceAllTodos(mergedTodos)
 
-                        // 保存到Git仓库目录
-                        val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
-                        saveTodosToGitRepo(mergedTodos, remoteTodoFile)
+                                // 保存到Git仓库目录
+                                val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
+                                saveTodosToGitRepo(mergedTodos, remoteTodoFile)
 
-                        // 保存笔记
-                        val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
-                        if (!remoteNotesDir.exists()) {
-                            remoteNotesDir.mkdirs()
+                                // 保存笔记
+                                val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
+                                if (!remoteNotesDir.exists()) {
+                                    remoteNotesDir.mkdirs()
+                                }
+
+                                mergedNotes.forEach { note ->
+                                    val noteFile = File(remoteNotesDir, "note_${note.id}_${note.uuid}.md")
+                                    noteFile.writeText(note.toMarkdown())
+                                }
+
+                                syncListener?.onSyncProgress("合并完成")
+
+                                // 提交合并后的更改
+                                val commitMessage = "同步合并 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
+
+                                gitManager.commitAndPush(
+                                    commitMessage = commitMessage,
+                                    filePatterns = listOf("todos.md", "notes/"),
+                                    onSuccess = {
+                                        syncListener?.onSyncSuccess("同步成功")
+                                        continuation.resume(true)
+                                    },
+                                    onError = { error ->
+                                        // 提交失败，但数据已经合并到本地，所以继续
+                                        Log.w(TAG, "提交失败，但本地数据已更新: $error")
+                                        syncListener?.onSyncSuccess("同步完成（但推送失败）")
+                                        continuation.resume(true)
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "合并数据时发生异常", e)
+                                syncListener?.onSyncError("合并数据失败: ${e.message}")
+                                continuation.resume(false)
+                            }
                         }
+                    },
+                    onError = { error ->
+                        // 拉取失败（可能是冲突或网络问题），直接删除本地仓库
+                        Log.d(TAG, "拉取失败，删除本地仓库: $error")
 
-                        mergedNotes.forEach { note ->
-                            val noteFile = File(remoteNotesDir, "note_${note.id}_${note.uuid}.md")
-                            noteFile.writeText(note.toMarkdown())
+                        syncScope.launch {
+                            try {
+                                // 删除本地仓库
+                                val repoDir = File(context.filesDir, GIT_REPO_DIR)
+                                if (repoDir.exists()) {
+                                    repoDir.deleteRecursively()
+                                    Log.d(TAG, "已删除本地仓库")
+                                }
+
+                                // 通知用户需要手动刷新
+                                syncListener?.onSyncError("同步失败，已清理本地仓库，请手动刷新")
+                                continuation.resume(false)
+                            } catch (e: Exception) {
+                                syncListener?.onSyncError("处理失败: ${e.message}")
+                                continuation.resume(false)
+                            }
                         }
-
-                        syncListener?.onSyncProgress("合并后共有 ${mergedTodos.size} 条待办，${mergedNotes.size} 条笔记")
-
-                        // ... 其他代码 ...
-                    } catch (e: Exception) {
-                        // 错误处理
                     }
-                }
-            },
-            onError = { error ->
-                // 错误处理
+                )
             }
-        )
-    }
 
-    private fun handleSyncConflict() {
-        syncScope.launch {
-            try {
-                val repoDir = File(context.filesDir, GIT_REPO_DIR)
-                if (repoDir.exists()) {
-                    repoDir.deleteRecursively()
-                }
-
-                CoroutineScope(Dispatchers.Main).launch {
-                    syncListener?.onSyncStatusChanged("重新初始化...")
-                }
-
-                initializeGitRepo()
-            } catch (e: Exception) {
-                CoroutineScope(Dispatchers.Main).launch {
-                    syncListener?.onSyncError("处理冲突失败: ${e.message}")
-                }
+            if (!success) {
+                Log.d(TAG, "同步失败")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "pullAndMergeChanges 异常", e)
+            syncListener?.onSyncError("同步异常: ${e.message}")
+        } finally {
+            isSyncing = false
+            Log.d(TAG, "同步流程完成，isSyncing = false")
         }
     }
+
 
     fun autoPushTodo(operation: String, todo: TodoItem? = null) {
         if (!::gitManager.isInitialized) {

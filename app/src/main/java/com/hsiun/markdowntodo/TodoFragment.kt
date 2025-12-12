@@ -19,6 +19,9 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
     private lateinit var binding: FragmentTodoBinding
     private lateinit var adapter: TodoAdapter
 
+    private var currentDisplayMode = TodoAdapter.DisplayMode.ACTIVE
+
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -26,6 +29,15 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
     ): View {
         binding = FragmentTodoBinding.inflate(inflater, container, false)
         return binding.root
+    }
+
+    // 设置显示模式
+    fun setDisplayMode(mode: TodoAdapter.DisplayMode) {
+        if (::adapter.isInitialized) {
+            Log.d(TAG, "设置显示模式: $mode")
+            adapter.setDisplayMode(mode)
+            updateEmptyView()
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -62,6 +74,14 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
         // 设置监听器
         mainActivity.todoManager.setTodoChangeListener(this)
 
+        // 根据当前设置初始化显示模式
+        val showCompleted = mainActivity.settingsManager.showCompletedTodos
+        val initialDisplayMode = if (showCompleted) {
+            TodoAdapter.DisplayMode.ALL
+        } else {
+            TodoAdapter.DisplayMode.ACTIVE
+        }
+        setDisplayMode(initialDisplayMode)
         // 初始化时显示空状态
         updateEmptyView()
 
@@ -118,6 +138,16 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
 
         binding.emptyView.visibility = if (hasTodos) View.GONE else View.VISIBLE
         binding.recyclerView.visibility = if (hasTodos) View.VISIBLE else View.GONE
+
+        // 根据当前显示模式更新提示文本
+        val mode = adapter.getDisplayMode()
+        val modeText = when (mode) {
+            TodoAdapter.DisplayMode.ALL -> "全部"
+            TodoAdapter.DisplayMode.ACTIVE -> "未完成"
+            else -> {}
+        }
+
+        binding.emptyView.text = "暂无$modeText 待办事项\n下拉刷新可同步云端数据"
     }
 
     // TodoManager.TodoChangeListener 实现

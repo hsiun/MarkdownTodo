@@ -36,7 +36,6 @@ class GitManager(
     }
 
     // 1. 克隆仓库
-// 1. 克隆仓库
     fun initAndCloneRepo(onSuccess: () -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
@@ -85,57 +84,58 @@ class GitManager(
     }
 
     // 2. 拉取更新（同步）
-// 2. 拉取更新（同步）
     fun pullChanges(onSuccess: (PullResult) -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
                 val result = synchronized(lock) {
                     try {
+                        Log.d(TAG, "开始拉取更改...")
                         val repository = FileRepositoryBuilder()
                             .setGitDir(File(repoDir, ".git"))
                             .build()
 
+                        var pullResult: PullResult? = null
+
                         repository.use { repo ->
                             Git(repo).use { git ->
-                                val pullResult = git.pull()
+                                pullResult = git.pull()
                                     .setRemote("origin")
                                     .setRemoteBranchName(branch)
                                     .setCredentialsProvider(getCredentialsProvider())
                                     .call()
-
-                                if (pullResult.isSuccessful) {
-                                    Triple(true, pullResult, null)
-                                } else {
-                                    Triple(false, null, "拉取失败或有冲突")
-                                }
                             }
+                        }
+
+                        if (pullResult?.isSuccessful == true) {
+                            Log.d(TAG, "拉取成功")
+                            Triple(true, pullResult, null)
+                        } else {
+                            Log.w(TAG, "拉取失败或存在冲突")
+                            Triple(false, null, "拉取失败")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "拉取失败", e)
-                        Triple(false, null, "拉取失败: ${e.localizedMessage}")
+                        Triple(false, null, "拉取失败: ${e.localizedMessage ?: e.message}")
                     }
                 }
 
-                if (result.first && result.second != null) {
-                    withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
+                    if (result.first && result.second != null) {
                         onSuccess(result.second!!)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        onError(result.third ?: "未知错误")
+                    } else {
+                        onError(result.third ?: "拉取失败")
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "pullChanges 异常", e)
                 withContext(Dispatchers.Main) {
-                    onError("pullChanges 异常: ${e.localizedMessage}")
+                    onError("pullChanges 异常: ${e.localizedMessage ?: e.message}")
                 }
             }
         }
     }
 
     // 3. 提交并推送
-// 3. 提交并推送
     fun commitAndPush(
         commitMessage: String = "Update todos",
         filePatterns: List<String> = listOf("todos.md"),
