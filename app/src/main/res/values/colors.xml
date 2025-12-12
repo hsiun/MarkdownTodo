@@ -31,4 +31,8 @@
     <color name="tab_unselected_text">#666666</color>
     <color name="tab_indicator">#865EDC</color>
     <color name="tab_background">#F5F5F5</color>
+
+    <!-- 悬浮按钮 颜色 -->
+    <color name="button_fab">#FF9800</color>
+
 </resources>

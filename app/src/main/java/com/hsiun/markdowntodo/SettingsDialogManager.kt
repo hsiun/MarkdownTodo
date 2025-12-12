@@ -37,7 +37,7 @@ class SettingsDialogManager(private val context: Context) {
 
     fun showSettingsDialog(settingsManager: SettingsManager) {
         // 创建自定义的适配器
-        val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_settings_tab, null)
+        val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_settings_advanced, null)
 
         // 获取 ViewPager 和 TabLayout
         val viewPager = dialogView.findViewById<ViewPager>(R.id.settingsViewPager)
