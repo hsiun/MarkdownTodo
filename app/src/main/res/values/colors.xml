@@ -8,9 +8,27 @@
     <color name="todo_text_color">#FF333333</color>  <!-- 完全不透明的黑色 -->
     <color name="todo_text_color_completed">#FF757575</color>  <!-- 完全不透明的灰色 -->
 
+    <color name="colorTextPrimary">#212121</color>
+    <color name="colorTextSecondary">#757575</color>
+
+    <!-- 主色调 -->
     <color name="colorPrimary">#865EDC</color>
     <color name="colorPrimaryDark">#6A4CBA</color>
     <color name="colorAccent">#FF4081</color>
-    <color name="colorTextPrimary">#212121</color>
-    <color name="colorTextSecondary">#757575</color>
+
+    <!-- 文本颜色 -->
+    <color name="text_primary">#333333</color>
+    <color name="text_secondary">#666666</color>
+    <color name="text_hint">#999999</color>
+
+    <!-- 背景颜色 -->
+    <color name="background_white">#FFFFFF</color>
+    <color name="background_gray">#F5F5F5</color>
+    <color name="background_light_gray">#FAFAFA</color>
+
+    <!-- TabLayout 颜色 -->
+    <color name="tab_selected_text">#865EDC</color>
+    <color name="tab_unselected_text">#666666</color>
+    <color name="tab_indicator">#865EDC</color>
+    <color name="tab_background">#F5F5F5</color>
 </resources>

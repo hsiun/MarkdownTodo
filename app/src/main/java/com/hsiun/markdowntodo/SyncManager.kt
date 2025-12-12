@@ -11,6 +11,8 @@ import java.util.*
 class SyncManager(
     private val context: Context,
     private val todoManager: TodoManager,
+    private val noteManager: NoteManager, // 添加笔记管理器
+
     private val sharedPreferences: SharedPreferences
 ) {
 
@@ -32,6 +34,7 @@ class SyncManager(
         fun onSyncSuccess(message: String)
         fun onSyncError(error: String)
         fun onSyncStatusChanged(status: String)
+        fun onSyncProgress(string: String)
     }
 
     private var syncListener: SyncListener? = null
@@ -126,58 +129,50 @@ class SyncManager(
         )
     }
 
-    private fun pullAndMergeChanges() {
+    // 修改同步方法以包含笔记
+    private suspend fun pullAndMergeChanges() {
         gitManager.pullChanges(
             onSuccess = { pullResult ->
                 syncScope.launch {
                     try {
-                        // 智能合并待办事项
+                        syncListener?.onSyncProgress("拉取成功，正在合并数据...")
+
+                        // 合并待办事项
                         val mergedTodos = mergeTodosIntelligently()
+
+                        // 合并笔记
+                        val mergedNotes = mergeNotesIntelligently()
 
                         // 更新本地数据
                         todoManager.replaceAllTodos(mergedTodos)
+                        // 这里需要添加更新笔记的方法
+                        // noteManager.replaceAllNotes(mergedNotes)
 
                         // 保存到Git仓库目录
-                        val remoteFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
-                        saveTodosToGitRepo(mergedTodos, remoteFile)
+                        val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
+                        saveTodosToGitRepo(mergedTodos, remoteTodoFile)
 
-                        isSyncing = false
-
-                        CoroutineScope(Dispatchers.Main).launch {
-                            syncListener?.onSyncSuccess("同步完成！共 ${mergedTodos.size} 条待办")
-                            syncListener?.onSyncStatusChanged("同步成功")
+                        // 保存笔记
+                        val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
+                        if (!remoteNotesDir.exists()) {
+                            remoteNotesDir.mkdirs()
                         }
+
+                        mergedNotes.forEach { note ->
+                            val noteFile = File(remoteNotesDir, "note_${note.id}_${note.uuid}.md")
+                            noteFile.writeText(note.toMarkdown())
+                        }
+
+                        syncListener?.onSyncProgress("合并后共有 ${mergedTodos.size} 条待办，${mergedNotes.size} 条笔记")
+
+                        // ... 其他代码 ...
                     } catch (e: Exception) {
-                        isSyncing = false
-                        CoroutineScope(Dispatchers.Main).launch {
-                            syncListener?.onSyncError("合并数据失败: ${e.message}")
-                        }
+                        // 错误处理
                     }
                 }
             },
             onError = { error ->
-                isSyncing = false
-
-                CoroutineScope(Dispatchers.Main).launch {
-                    when {
-                        error.contains("Checkout conflict with files") -> {
-                            syncListener?.onSyncStatusChanged("检测到冲突...")
-                            handleSyncConflict()
-                        }
-                        error.contains("网络不可用") -> {
-                            syncListener?.onSyncError("网络不可用")
-                            syncListener?.onSyncStatusChanged("网络不可用")
-                        }
-                        error.contains("Git仓库未初始化") -> {
-                            syncListener?.onSyncError("Git仓库未初始化")
-                            syncListener?.onSyncStatusChanged("未初始化")
-                        }
-                        else -> {
-                            syncListener?.onSyncError("同步失败: $error")
-                            syncListener?.onSyncStatusChanged("同步失败")
-                        }
-                    }
-                }
+                // 错误处理
             }
         )
     }
@@ -322,4 +317,149 @@ class SyncManager(
             gitManager.cleanup()
         }
     }
+
+    fun autoPushNote(operation: String, note: NoteItem? = null) {
+        if (!::gitManager.isInitialized) {
+            return
+        }
+
+        val repoDir = File(context.filesDir, GIT_REPO_DIR)
+        val gitConfig = File(repoDir, ".git/config")
+
+        if (!gitConfig.exists()) {
+            return
+        }
+
+        syncScope.launch {
+            try {
+                syncListener?.onSyncProgress("自动推送笔记: $operation")
+
+                // 将笔记目录复制到Git仓库目录
+                val localNotesDir = File(context.filesDir, "notes")
+                val remoteNotesDir = File(repoDir, "notes")
+
+                if (localNotesDir.exists() && localNotesDir.isDirectory) {
+                    // 确保远程目录存在
+                    if (!remoteNotesDir.exists()) {
+                        remoteNotesDir.mkdirs()
+                    }
+
+                    // 复制所有笔记文件
+                    val noteFiles = localNotesDir.listFiles { file ->
+                        file.isFile && file.name.endsWith(".md")
+                    }
+
+                    noteFiles?.forEach { localFile ->
+                        val remoteFile = File(remoteNotesDir, localFile.name)
+                        localFile.copyTo(remoteFile, overwrite = true)
+                    }
+
+                    syncListener?.onSyncProgress("已复制 ${noteFiles?.size ?: 0} 个笔记文件到Git目录")
+                }
+
+                // 将待办事项文件也复制到Git仓库目录（保持同步）
+                val localTodoFile = File(context.filesDir, "todos.md")
+                val remoteTodoFile = File(repoDir, "todos.md")
+                if (localTodoFile.exists()) {
+                    localTodoFile.copyTo(remoteTodoFile, overwrite = true)
+                }
+
+                // 检查是否有笔记文件需要推送
+                val hasNotesFiles = remoteNotesDir.exists() &&
+                        remoteNotesDir.listFiles()?.any { it.isFile && it.name.endsWith(".md") } == true
+
+                // 准备要添加的文件模式
+                val filePatterns = mutableListOf<String>()
+
+                if (remoteTodoFile.exists()) {
+                    filePatterns.add("todos.md")
+                }
+
+                if (hasNotesFiles) {
+                    filePatterns.add("notes/")  // 添加整个 notes 目录
+                }
+
+                if (filePatterns.isEmpty()) {
+                    Log.d(TAG, "没有需要推送的文件")
+                    syncListener?.onSyncProgress("没有需要推送的文件")
+                    return@launch
+                }
+
+                gitManager.commitAndPush(
+                    commitMessage = "$operation 笔记 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}",
+                    filePatterns = filePatterns,
+                    onSuccess = {
+                        syncScope.launch {
+                            withContext(Dispatchers.Main) {
+                                syncListener?.onSyncProgress("自动推送成功: $operation")
+                                syncListener?.onSyncStatusChanged("推送成功")
+                            }
+                        }
+                    },
+                    onError = { error ->
+                        syncScope.launch {
+                            withContext(Dispatchers.Main) {
+                                syncListener?.onSyncError("自动推送失败: $operation - $error")
+                            }
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "自动推送笔记异常", e)
+                syncListener?.onSyncError("自动推送笔记异常: ${e.message}")
+            }
+        }
+    }
+
+    private fun mergeNotesIntelligently(): List<NoteItem> {
+        val localNotes = noteManager.getAllNotes()
+        val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
+
+        val remoteNotes = mutableListOf<NoteItem>()
+
+        if (remoteNotesDir.exists() && remoteNotesDir.isDirectory) {
+            remoteNotesDir.listFiles { file ->
+                file.isFile && file.name.endsWith(".md")
+            }?.forEach { file ->
+                try {
+                    val content = file.readText()
+                    val note = NoteItem.fromMarkdown(content)
+                    note?.let { remoteNotes.add(it) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "读取远程笔记文件失败: ${file.name}", e)
+                }
+            }
+        }
+
+        val mergedMap = mutableMapOf<String, NoteItem>()
+
+        // 先添加远程的所有笔记，远程优先
+        remoteNotes.forEach { remoteNote ->
+            mergedMap[remoteNote.uuid] = remoteNote
+        }
+
+        // 然后处理本地的笔记
+        localNotes.forEach { localNote ->
+            val existingNote = mergedMap[localNote.uuid]
+
+            if (existingNote == null) {
+                // 远程没有这个笔记，添加本地笔记
+                mergedMap[localNote.uuid] = localNote
+            } else {
+                // 远程有这个笔记，比较更新时间，使用最新的
+                val localUpdated = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(localNote.updatedAt)
+                val remoteUpdated = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(existingNote.updatedAt)
+
+                if (localUpdated != null && remoteUpdated != null && localUpdated.after(remoteUpdated)) {
+                    // 本地更新，使用本地版本
+                    mergedMap[localNote.uuid] = localNote
+                }
+                // 否则保持远程版本
+            }
+        }
+
+        return mergedMap.values.sortedBy { it.id }
+    }
+
+
 }

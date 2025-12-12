@@ -57,5 +57,6 @@ dependencies {
     implementation ("org.eclipse.jgit:org.eclipse.jgit:5.13.0.202109080827-r") // 都稳定
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.viewpager:viewpager:1.0.0")
-
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
+    implementation("androidx.cardview:cardview:1.0.0")
 }

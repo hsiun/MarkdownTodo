@@ -7,6 +7,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
@@ -25,7 +26,7 @@ class TodoDialogManager(private val context: Context) {
 
         val dialogTitle = dialogView.findViewById<TextView>(R.id.dialogTitleText)
         val inputEditText = dialogView.findViewById<EditText>(R.id.inputEditText)
-        val completeButton = dialogView.findViewById<MaterialButton>(R.id.completeButton)
+        val completeButton = dialogView.findViewById<Button>(R.id.completeButton)
         val reminderCheckBox = dialogView.findViewById<CheckBox>(R.id.reminderCheckBox)
 
         dialogTitle.text = "新增待办"
@@ -89,7 +90,7 @@ class TodoDialogManager(private val context: Context) {
         val dialogTitle = dialogView.findViewById<TextView>(R.id.dialogTitleText)
         val inputEditText = dialogView.findViewById<EditText>(R.id.inputEditText)
         val todoIdInput = dialogView.findViewById<EditText>(R.id.todoIdInput)
-        val completeButton = dialogView.findViewById<MaterialButton>(R.id.completeButton)
+        val completeButton = dialogView.findViewById<Button>(R.id.completeButton)
         val reminderCheckBox = dialogView.findViewById<CheckBox>(R.id.reminderCheckBox)
 
         dialogTitle.text = "编辑待办"

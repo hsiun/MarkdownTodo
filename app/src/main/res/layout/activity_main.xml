@@ -3,184 +3,114 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFFFF"
-    android:fitsSystemWindows="true">
+    android:background="#FFFFFF">
 
-    <!-- 修改1: 移除 AppBarLayout 的蓝色主题，使用白色背景 -->
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#FFFFFF"
-        android:fitsSystemWindows="true"
-        android:elevation="4dp">
+        android:elevation="0dp">
 
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="#FFFFFF"
-            app:titleTextColor="#000000"
-            app:subtitleTextColor="#666666">
-
-            <!-- 自定义工具栏内容 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingHorizontal="8dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="待办"
-                    android:textSize="28sp"
-                    android:textColor="#242424"
-                    android:textStyle="normal"
-                    android:paddingStart="8dp" />
-
-                <!-- 修改：添加同步状态指示器 -->
-                <TextView
-                    android:id="@+id/syncStatusText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="⚪"
-                    android:textSize="12sp"
-                    android:textColor="#666666"
-                    android:layout_marginEnd="8dp" />
-
-                <TextView
-                    android:id="@+id/todoCountText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0 条待办 | 我的待办"
-                    android:textSize="14sp"
-                    android:textColor="#666666"
-                    android:layout_marginEnd="8dp" />
-
-                <ImageButton
-                    android:id="@+id/settingsButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_more_vert"
-                    android:contentDescription="设置"
-                    app:tint="#666666" />
-
-            </LinearLayout>
-        </androidx.appcompat.widget.Toolbar>
-    </com.google.android.material.appbar.AppBarLayout>
-
-    <!-- 内容区域 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-        <!-- "无日期"标签 -->
-        <TextView
-            android:id="@+id/dateLabel"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="#F5F5F5"
-            android:text="无日期"
-            android:textSize="14sp"
-            android:textColor="#333333"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:drawablePadding="8dp"/>
-
-        <!-- 添加：下拉刷新容器 -->
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/swipeRefreshLayout"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1">
-
-            <!-- 待办事项列表 -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerView"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="#FFFFFF"
-                android:paddingHorizontal="2dp"
-                android:paddingVertical="1dp"
-                android:clipToPadding="false" />
-
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-
-        <!-- 笔记 -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/notesRecyclerView"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:visibility="gone" />
-
-        <!-- 空状态提示 -->
-        <TextView
-            android:id="@+id/emptyView"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:text="暂无待办事项"
-            android:textSize="16sp"
-            android:textColor="#999999"
-            android:gravity="center"
-            android:visibility="gone" />
-
-        <!-- 修改4: 将底部选项卡的布局权重调整为更合理的值 -->
-        <!-- 底部选项卡 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="#FFFFFF"
-            android:orientation="horizontal"
-            android:elevation="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="vertical"
+            android:padding="16dp">
 
-            <TextView
-                android:id="@+id/notesTab"
-                android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
-                android:text="笔记"
-                android:textSize="14sp"
-                android:textColor="#999999"
-                android:gravity="center"
-                android:drawablePadding="4dp"
-                android:drawableTop="@drawable/ic_notes_outline" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/todoTab"
-                android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
-                android:text="待办"
-                android:textSize="14sp"
-                android:textColor="#1A73E8"
-                android:gravity="center"
-                android:drawablePadding="4dp"
-                android:drawableTop="@drawable/ic_todo_filled" />
+                <TextView
+                    android:id="@+id/todoCountText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="0 条待办"
+                    android:textColor="#333333"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/syncStatusText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="⚪"
+                    android:textColor="#666666"
+                    android:textSize="20sp" />
+
+                <ImageButton
+                    android:id="@+id/settingsButton"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="设置"
+                    android:src="@android:drawable/ic_menu_preferences"
+                    app:tint="#333333" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
-    </LinearLayout>
+    </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- 修改2: 将悬浮按钮调整到右下角，距离底部更合适 -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefreshLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/viewPager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- 固定高度的 TabLayout -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom"
+        android:background="#F5F5F5"
+        android:elevation="8dp"
+        app:tabGravity="fill"
+        app:tabIndicatorColor="#865EDC"
+        app:tabIndicatorHeight="3dp"
+        app:tabMode="fixed"
+        app:tabRippleColor="@android:color/transparent"
+        app:tabSelectedTextColor="#865EDC"
+        app:tabTextColor="#666666">
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="待办" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="笔记" />
+
+    </com.google.android.material.tabs.TabLayout>
+
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_marginEnd="38dp"
-        android:layout_marginBottom="88dp"
-        android:contentDescription="添加待办事项"
-        app:backgroundTint="#FFC107"
-        app:layout_anchorGravity="bottom|end"
-        app:srcCompat="@drawable/ic_dialog_add"
-        app:tint="#FFFFFF"/>
+        android:layout_margin="16dp"
+        android:layout_marginBottom="72dp"
+        android:src="@android:drawable/ic_input_add"
+        app:backgroundTint="#865EDC"
+        app:elevation="8dp"
+        app:tint="@android:color/white" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

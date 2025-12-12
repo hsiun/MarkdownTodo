@@ -1,81 +1,119 @@
+// NoteItem.kt
 package com.hsiun.markdowntodo
 
+import android.util.Log
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.UUID
+import java.util.*
 
 data class NoteItem(
-    val id: String = UUID.randomUUID().toString(),
-    var title: String = "新笔记",
-    var content: String = "",
+    val id: Int,
+    var title: String,
+    var content: String,
     val createdAt: String = SimpleDateFormat(
-        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd HH:mm:ss",
         Locale.getDefault()
     ).format(Date()),
-    var updatedAt: String = SimpleDateFormat(
-        "yyyy-MM-dd HH:mm",
+    val updatedAt: String = SimpleDateFormat(
+        "yyyy-MM-dd HH:mm:ss",
         Locale.getDefault()
-    ).format(Date())
+    ).format(Date()),
+    val uuid: String = UUID.randomUUID().toString()
 ) {
     fun toMarkdown(): String {
-        val header = "---\n" +
-                "title: $title\n" +
-                "created: $createdAt\n" +
-                "updated: $updatedAt\n" +
-                "id: $id\n" +
-                "---\n\n"
-        return header + content
+        return "# $title\n\n" +
+                "> 创建时间: $createdAt  |  更新时间: $updatedAt\n\n" +
+                "---\n\n" +
+                content +
+                "\n\n---\n" +
+                "ID: $id | UUID: $uuid\n"
     }
 
     companion object {
-        fun fromMarkdown(markdown: String): NoteItem? {
+        fun fromMarkdown(text: String): NoteItem? {
             return try {
-                val lines = markdown.lines()
+                val lines = text.lines()
+                if (lines.isEmpty()) return null
 
-                // 解析YAML头部
-                if (!lines.firstOrNull().equals("---")) {
-                    return NoteItem(title = "未命名笔记", content = markdown)
-                }
-
-                val headerEndIndex = lines.drop(1).indexOfFirst { it == "---" } + 1
-                if (headerEndIndex <= 1) {
-                    return NoteItem(title = "未命名笔记", content = markdown)
-                }
-
-                val headerLines = lines.subList(1, headerEndIndex)
-                val contentStart = headerEndIndex + 1
-                val content = if (contentStart < lines.size) {
-                    lines.subList(contentStart, lines.size).joinToString("\n")
+                // 提取标题 (第一行去掉 # 和空格)
+                val titleLine = lines.first()
+                val title = if (titleLine.startsWith("# ")) {
+                    titleLine.substring(2).trim()
                 } else {
-                    ""
+                    titleLine.trim()
                 }
 
-                var title = "未命名笔记"
-                var id = UUID.randomUUID().toString()
-                var createdAt = SimpleDateFormat(
-                    "yyyy-MM-dd HH:mm",
-                    Locale.getDefault()
-                ).format(Date())
-                var updatedAt = createdAt
+                // 解析元数据行
+                var id = -1
+                var uuid = ""
+                var createdAt = ""
+                var updatedAt = ""
+                var contentStartIndex = 0
 
-                headerLines.forEach { line ->
+                for (i in lines.indices) {
+                    val line = lines[i]
                     when {
-                        line.startsWith("title:") -> title = line.substring(6).trim()
-                        line.startsWith("id:") -> id = line.substring(3).trim()
-                        line.startsWith("created:") -> createdAt = line.substring(8).trim()
-                        line.startsWith("updated:") -> updatedAt = line.substring(8).trim()
+                        line.startsWith("> 创建时间:") -> {
+                            val parts = line.split("|")
+                            if (parts.isNotEmpty()) {
+                                createdAt = parts[0].replace("> 创建时间:", "").trim()
+                            }
+                            if (parts.size > 1) {
+                                updatedAt = parts[1].replace("更新时间:", "").trim()
+                            }
+                        }
+                        line.startsWith("ID:") -> {
+                            val idMatch = Regex("ID: (\\d+)").find(line)
+                            idMatch?.let {
+                                id = it.groupValues[1].toInt()
+                            }
+                            val uuidMatch = Regex("UUID: ([^ ]+)").find(line)
+                            uuidMatch?.let {
+                                uuid = it.groupValues[1]
+                            }
+                        }
+                        line == "---" -> {
+                            // 找到第二个分隔符后的内容开始位置
+                            if (contentStartIndex == 0) {
+                                contentStartIndex = i + 1
+                            }
+                        }
                     }
                 }
+
+                // 提取内容（在两个---之间的部分）
+                val contentLines = mutableListOf<String>()
+                var inContent = false
+                var separatorCount = 0
+
+                for (i in lines.indices) {
+                    val line = lines[i]
+                    when {
+                        line == "---" -> {
+                            separatorCount++
+                            if (separatorCount == 2) {
+                                inContent = true
+                            } else if (separatorCount == 3) {
+                                break
+                            }
+                        }
+                        inContent && separatorCount == 2 -> {
+                            contentLines.add(line)
+                        }
+                    }
+                }
+
+                val content = contentLines.joinToString("\n").trim()
 
                 NoteItem(
                     id = id,
                     title = title,
                     content = content,
-                    createdAt = createdAt,
-                    updatedAt = updatedAt
+                    createdAt = createdAt.ifEmpty { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()) },
+                    updatedAt = updatedAt.ifEmpty { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()) },
+                    uuid = uuid.ifEmpty { UUID.randomUUID().toString() }
                 )
             } catch (e: Exception) {
+                Log.e("NoteItem", "解析笔记失败: ${e.message}")
                 null
             }
         }

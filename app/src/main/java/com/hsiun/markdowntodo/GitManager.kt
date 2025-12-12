@@ -36,136 +36,201 @@ class GitManager(
     }
 
     // 1. 克隆仓库
+// 1. 克隆仓库
     fun initAndCloneRepo(onSuccess: () -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
-                synchronized(lock) {
-                    Log.d(TAG, "开始克隆仓库到: ${repoDir.absolutePath}")
+                val result = synchronized(lock) {
+                    try {
+                        Log.d(TAG, "开始克隆仓库到: ${repoDir.absolutePath}")
 
-                    // 如果目录已存在，先删除
-                    if (repoDir.exists()) {
-                        repoDir.deleteRecursively()
+                        // 如果目录已存在，先删除
+                        if (repoDir.exists()) {
+                            repoDir.deleteRecursively()
+                        }
+
+                        // 使用JGit进行克隆
+                        Git.cloneRepository()
+                            .setURI(repoUrl)
+                            .setDirectory(repoDir)
+                            .setBranch(branch)
+                            .setCredentialsProvider(getCredentialsProvider())
+                            .call()
+                            .close()
+
+                        Log.d(TAG, "克隆成功")
+                        Pair(true, null)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "克隆失败", e)
+                        Pair(false, "克隆失败: ${e.localizedMessage ?: "未知错误"}")
                     }
-
-                    // 使用JGit进行克隆
-                    Git.cloneRepository()
-                        .setURI(repoUrl)
-                        .setDirectory(repoDir)
-                        .setBranch(branch)
-                        .setCredentialsProvider(getCredentialsProvider())
-                        .call()
-                        .close()
-
-                    Log.d(TAG, "克隆成功")
                 }
 
-                withContext(Dispatchers.Main) {
-                    onSuccess()
+                if (result.first) {
+                    withContext(Dispatchers.Main) {
+                        onSuccess()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onError(result.second ?: "未知错误")
+                    }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "克隆失败", e)
+                Log.e(TAG, "initAndCloneRepo 异常", e)
                 withContext(Dispatchers.Main) {
-                    onError("克隆失败: ${e.localizedMessage ?: "未知错误"}")
+                    onError("initAndCloneRepo 异常: ${e.localizedMessage ?: "未知错误"}")
                 }
             }
         }
     }
 
     // 2. 拉取更新（同步）
+// 2. 拉取更新（同步）
     fun pullChanges(onSuccess: (PullResult) -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
-                synchronized(lock) {
-                    val repository = FileRepositoryBuilder()
-                        .setGitDir(File(repoDir, ".git"))
-                        .build()
+                val result = synchronized(lock) {
+                    try {
+                        val repository = FileRepositoryBuilder()
+                            .setGitDir(File(repoDir, ".git"))
+                            .build()
 
-                    repository.use { repo ->
-                        Git(repo).use { git ->
-                            val pullResult = git.pull()
-                                .setRemote("origin")
-                                .setRemoteBranchName(branch)
-                                .setCredentialsProvider(getCredentialsProvider())
-                                .call()
+                        repository.use { repo ->
+                            Git(repo).use { git ->
+                                val pullResult = git.pull()
+                                    .setRemote("origin")
+                                    .setRemoteBranchName(branch)
+                                    .setCredentialsProvider(getCredentialsProvider())
+                                    .call()
 
-                            if (pullResult.isSuccessful) {
-                                // 确保在主线程回调
-                                coroutineScope.launch(Dispatchers.Main) {
-                                    onSuccess(pullResult)
+                                if (pullResult.isSuccessful) {
+                                    Triple(true, pullResult, null)
+                                } else {
+                                    Triple(false, null, "拉取失败或有冲突")
                                 }
-                            } else {
-                                throw Exception("拉取失败或有冲突")
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "拉取失败", e)
+                        Triple(false, null, "拉取失败: ${e.localizedMessage}")
+                    }
+                }
+
+                if (result.first && result.second != null) {
+                    withContext(Dispatchers.Main) {
+                        onSuccess(result.second!!)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onError(result.third ?: "未知错误")
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "拉取失败", e)
+                Log.e(TAG, "pullChanges 异常", e)
                 withContext(Dispatchers.Main) {
-                    onError("拉取失败: ${e.localizedMessage}")
+                    onError("pullChanges 异常: ${e.localizedMessage}")
                 }
             }
         }
     }
 
     // 3. 提交并推送
+// 3. 提交并推送
     fun commitAndPush(
         commitMessage: String = "Update todos",
+        filePatterns: List<String> = listOf("todos.md"),
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
             try {
-                synchronized(lock) {
-                    val repository = FileRepositoryBuilder()
-                        .setGitDir(File(repoDir, ".git"))
-                        .build()
+                // 在临界区内执行所有同步操作，但不包含任何挂起函数
+                val result = synchronized(lock) {
+                    try {
+                        val repository = FileRepositoryBuilder()
+                            .setGitDir(File(repoDir, ".git"))
+                            .build()
 
-                    repository.use { repo ->
-                        Git(repo).use { git ->
-                            // 确保文件存在
-                            val fileToCheck = File(repoDir, "todos.md")
-                            if (!fileToCheck.exists()) {
-                                throw Exception("待办事项文件不存在")
+                        repository.use { repo ->
+                            Git(repo).use { git ->
+                                // 清理可能存在的锁文件
+                                cleanupLockFiles()
+
+                                // 确保文件存在
+                                val hasValidFiles = filePatterns.any { pattern ->
+                                    val fileToCheck = if (pattern.contains("*")) {
+                                        File(repoDir, pattern.substringBeforeLast("*"))
+                                    } else {
+                                        File(repoDir, pattern)
+                                    }
+                                    fileToCheck.exists() || (fileToCheck.isDirectory && fileToCheck.listFiles()?.isNotEmpty() == true)
+                                }
+
+                                if (!hasValidFiles) {
+                                    Log.w(TAG, "没有需要提交的文件")
+                                    return@synchronized Pair(true, "没有需要提交的文件")
+                                }
+
+                                // 添加所有指定的文件模式
+                                filePatterns.forEach { pattern ->
+                                    try {
+                                        git.add()
+                                            .addFilepattern(pattern)
+                                            .call()
+                                        Log.d(TAG, "已添加文件模式: $pattern")
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "添加文件模式 $pattern 失败: ${e.message}")
+                                    }
+                                }
+
+                                // 检查是否有需要提交的更改
+                                val status = git.status().call()
+                                if (status.isClean) {
+                                    Log.d(TAG, "没有需要提交的更改")
+                                    return@synchronized Pair(true, "没有需要提交的更改")
+                                }
+
+                                // 提交
+                                val commit = git.commit()
+                                    .setMessage(commitMessage)
+                                    .call()
+
+                                if (commit == null) {
+                                    throw Exception("提交失败")
+                                }
+
+                                Log.d(TAG, "提交成功: ${commit.id.name} - $commitMessage")
+
+                                // 推送
+                                git.push()
+                                    .setRemote("origin")
+                                    .setCredentialsProvider(getCredentialsProvider())
+                                    .call()
+
+                                Log.d(TAG, "推送成功")
+                                Pair(true, null)
                             }
-
-                            // 清理可能存在的锁文件
-                            cleanupLockFiles()
-
-                            // 添加文件
-                            git.add()
-                                .addFilepattern("todos.md")
-                                .call()
-
-                            // 提交
-                            val commit = git.commit()
-                                .setMessage(commitMessage)
-                                .call()
-
-                            if (commit == null) {
-                                throw Exception("没有需要提交的更改")
-                            }
-
-                            Log.d(TAG, "提交成功: ${commit.id.name} - $commitMessage")
-
-                            // 推送
-                            git.push()
-                                .setRemote("origin")
-                                .setCredentialsProvider(getCredentialsProvider())
-                                .call()
-
-                            Log.d(TAG, "推送成功")
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "推送失败", e)
+                        Pair(false, "推送失败: ${e.localizedMessage ?: e.message}")
                     }
                 }
 
-                withContext(Dispatchers.Main) {
-                    onSuccess()
+                // 在临界区外部执行回调
+                if (result.first) {
+                    withContext(Dispatchers.Main) {
+                        onSuccess()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onError(result.second ?: "未知错误")
+                    }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "推送失败", e)
+                Log.e(TAG, "commitAndPush 异常", e)
                 withContext(Dispatchers.Main) {
-                    onError("推送失败: ${e.localizedMessage ?: e.message}")
+                    onError("commitAndPush 异常: ${e.localizedMessage ?: e.message}")
                 }
             }
         }
