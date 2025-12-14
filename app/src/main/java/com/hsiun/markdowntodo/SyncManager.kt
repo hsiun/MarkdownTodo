@@ -154,6 +154,12 @@ class SyncManager(
 
                                 // 更新本地数据
                                 todoManager.replaceAllTodos(mergedTodos)
+
+                                // 新增：重新调度所有提醒
+                                withContext(Dispatchers.Main) {
+                                    val mainActivity = context as? MainActivity
+                                    mainActivity?.todoManager?.rescheduleAllReminders()
+                                }
                                 // 添加：更新本地笔记数据
                                 noteManager.replaceAllNotes(mergedNotes)
                                 // 保存到Git仓库目录
@@ -299,14 +305,27 @@ class SyncManager(
             if (existingTodo == null) {
                 mergedMap[localTodo.uuid] = localTodo
             } else {
-                if (existingTodo.isCompleted) {
-                    val mergedTodo = localTodo.copy(isCompleted = true)
-                    mergedMap[localTodo.uuid] = mergedTodo
-                } else if (localTodo.isCompleted && !existingTodo.isCompleted) {
-                    mergedMap[localTodo.uuid] = localTodo
+                // 优先保留提醒设置
+                val mergedTodo = if (existingTodo.remindTime > 0 || existingTodo.nextRemindTime > 0) {
+                    // 远程有提醒设置，使用远程的
+                    existingTodo.copy(
+                        title = localTodo.title, // 保留最新的标题
+                        isCompleted = if (existingTodo.isCompleted) true else localTodo.isCompleted // 完成状态优先已完成
+                    )
+                } else if (localTodo.remindTime > 0 || localTodo.nextRemindTime > 0) {
+                    // 本地有提醒设置，使用本地的
+                    localTodo.copy(
+                        title = existingTodo.title, // 保留标题
+                        isCompleted = if (localTodo.isCompleted) true else existingTodo.isCompleted
+                    )
                 } else {
-                    mergedMap[localTodo.uuid] = localTodo
+                    // 都没有提醒设置，合并其他字段
+                    localTodo.copy(
+                        title = existingTodo.title, // 保留标题
+                        isCompleted = if (existingTodo.isCompleted) true else localTodo.isCompleted
+                    )
                 }
+                mergedMap[localTodo.uuid] = mergedTodo
             }
         }
 

@@ -351,6 +351,13 @@ class TodoManager(private val context: Context) {
     }
 
     fun replaceAllTodos(newTodos: List<TodoItem>) {
+        // 先取消所有现有的提醒
+        todos.forEach { todo ->
+            if (todo.remindTime > 0 || todo.nextRemindTime > 0) {
+                ReminderScheduler.cancelReminder(context, todo)
+            }
+        }
+
         todos.clear()
         todos.addAll(newTodos)
 
@@ -362,7 +369,12 @@ class TodoManager(private val context: Context) {
 
         saveLocalTodos()
         saveMaxId()
+
+        // 重新调度所有需要提醒的待办
+        rescheduleAllReminders()
+
         todoChangeListener?.onTodosChanged(newTodos)
+        Log.d(TAG, "已替换所有待办: ${todos.size} 条，已重新调度提醒")
     }
 
     fun getActiveTodosCount(): Int {
