@@ -19,6 +19,7 @@ class TodoReminderReceiver : BroadcastReceiver() {
         val todoTitle = intent.getStringExtra("todo_title") ?: "待办事项"
         val todoUuid = intent.getStringExtra("todo_uuid") ?: ""
         val remindTime = intent.getLongExtra("remind_time", 0L)
+        val repeatType = intent.getIntExtra("repeat_type", RepeatType.NONE.value)
 
         if (todoId == -1) {
             Log.w(TAG, "无效的待办ID")
@@ -30,12 +31,12 @@ class TodoReminderReceiver : BroadcastReceiver() {
         if (mainActivity != null) {
             // 如果应用正在运行，通过MainActivity处理
             val todo = mainActivity.todoManager.getTodoById(todoId)
-            if (todo != null && !todo.hasReminded) {
+            if (todo != null) {
                 // 触发提醒通知
                 ReminderScheduler.triggerReminder(context, todo)
-                // 标记为已提醒
-                mainActivity.todoManager.checkAndTriggerReminders()
-                Log.d(TAG, "已触发提醒: ${todo.title}")
+                // 处理重复逻辑
+                mainActivity.todoManager.handleRepeatedReminder(todoId)
+                Log.d(TAG, "已处理提醒: ${todo.title}, 重复类型=${RepeatType.fromValue(repeatType).displayName}")
             }
         } else {
             // 如果应用不在运行，创建临时TodoItem并发送通知
@@ -43,7 +44,8 @@ class TodoReminderReceiver : BroadcastReceiver() {
                 id = todoId,
                 title = todoTitle,
                 uuid = todoUuid,
-                remindTime = remindTime
+                remindTime = remindTime,
+                repeatType = repeatType
             )
             ReminderScheduler.triggerReminder(context, tempTodo)
 

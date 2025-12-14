@@ -263,10 +263,9 @@ class MainActivity : AppCompatActivity(),
         binding.swipeRefreshLayout.setProgressBackgroundColorSchemeColor(Color.parseColor("#FFFFFF"))
     }
 
-    // TodoDialogManager.TodoDialogListener 实现
-    override fun onAddTodo(title: String, setReminder: Boolean, remindTime: Long) {
+    override fun onAddTodo(title: String, setReminder: Boolean, remindTime: Long, repeatType: Int) {
         try {
-            val todo = todoManager.addTodo(title, setReminder, remindTime)
+            val todo = todoManager.addTodo(title, setReminder, remindTime, repeatType)
             syncManager.autoPushTodo("添加", todo)
             Toast.makeText(this, "已添加: $title", Toast.LENGTH_SHORT).show()
             updatePageCounts()
@@ -275,9 +274,9 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    override fun onUpdateTodo(id: Int, newTitle: String, setReminder: Boolean, remindTime: Long) {
+    override fun onUpdateTodo(id: Int, newTitle: String, setReminder: Boolean, remindTime: Long, repeatType: Int) {
         try {
-            val todo = todoManager.updateTodo(id, newTitle, setReminder, remindTime)
+            val todo = todoManager.updateTodo(id, newTitle, setReminder, remindTime, repeatType)
             syncManager.autoPushTodo("更新", todo)
             Toast.makeText(this, "已更新: $newTitle", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {

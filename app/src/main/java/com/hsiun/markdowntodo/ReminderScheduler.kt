@@ -1,10 +1,11 @@
-// ReminderScheduler.kt
+// ReminderScheduler.kt - 修改广播接收器部分
 package com.hsiun.markdowntodo
 
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,7 +14,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.util.Log
+import android.widget.Toast
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 
 class ReminderScheduler {
 
@@ -57,7 +61,8 @@ class ReminderScheduler {
 
         // 调度提醒
         fun scheduleReminder(context: Context, todo: TodoItem) {
-            if (todo.remindTime <= 0 || todo.isCompleted || todo.hasReminded) {
+            val timeToSchedule = if (todo.nextRemindTime > 0) todo.nextRemindTime else todo.remindTime
+            if (timeToSchedule <= 0 || todo.isCompleted) {
                 return
             }
 
@@ -67,7 +72,8 @@ class ReminderScheduler {
                     putExtra("todo_id", todo.id)
                     putExtra("todo_title", todo.title)
                     putExtra("todo_uuid", todo.uuid)
-                    putExtra("remind_time", todo.remindTime)
+                    putExtra("remind_time", timeToSchedule)
+                    putExtra("repeat_type", todo.repeatType)
                 }
 
                 val pendingIntent = PendingIntent.getBroadcast(
@@ -83,31 +89,33 @@ class ReminderScheduler {
                     if (alarmManager.canScheduleExactAlarms()) {
                         alarmManager.setExactAndAllowWhileIdle(
                             AlarmManager.RTC_WAKEUP,
-                            todo.remindTime,
+                            timeToSchedule,
                             pendingIntent
                         )
                     } else {
                         alarmManager.setAndAllowWhileIdle(
                             AlarmManager.RTC_WAKEUP,
-                            todo.remindTime,
+                            timeToSchedule,
                             pendingIntent
                         )
                     }
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
-                        todo.remindTime,
+                        timeToSchedule,
                         pendingIntent
                     )
                 } else {
                     alarmManager.setExact(
                         AlarmManager.RTC_WAKEUP,
-                        todo.remindTime,
+                        timeToSchedule,
                         pendingIntent
                     )
                 }
 
-                Log.d(TAG, "已调度提醒: ${todo.title} at ${todo.remindTime}")
+                Log.d(TAG, "已调度提醒: ${todo.title} at ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
+                    Date(timeToSchedule)
+                )}, 重复类型=${RepeatType.fromValue(todo.repeatType).displayName}")
             } catch (e: Exception) {
                 Log.e(TAG, "调度提醒失败", e)
             }
@@ -115,8 +123,6 @@ class ReminderScheduler {
 
         // 取消提醒
         fun cancelReminder(context: Context, todo: TodoItem) {
-            if (todo.remindTime <= 0) return
-
             try {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 val intent = Intent(context, TodoReminderReceiver::class.java)
@@ -141,28 +147,7 @@ class ReminderScheduler {
                 // 检查通知权限
                 if (!hasNotificationPermission(context)) {
                     Log.w(TAG, "没有通知权限，无法发送提醒: ${todo.title}")
-
-                    // 可以在没有权限时尝试其他方式提醒用户，比如振动
-                    try {
-                        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator?
-                        if (vibrator?.hasVibrator() == true) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                vibrator.vibrate(
-                                    android.os.VibrationEffect.createOneShot(
-                                        500,
-                                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                                    )
-                                )
-                            } else {
-                                @Suppress("DEPRECATION")
-                                vibrator.vibrate(500)
-                            }
-                            Log.d(TAG, "已使用振动提醒: ${todo.title}")
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "振动提醒失败", e)
-                    }
-
+                    // 可以在这里尝试其他提醒方式
                     return
                 }
 
@@ -182,7 +167,7 @@ class ReminderScheduler {
                 )
 
                 // 构建通知
-                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setContentTitle("待办提醒")
                     .setContentText("${todo.title}")
@@ -193,7 +178,13 @@ class ReminderScheduler {
                     .setShowWhen(true)
                     .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
                     .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                    .build()
+
+                // 添加重复信息
+                if (todo.repeatType != RepeatType.NONE.value) {
+                    notificationBuilder.setContentText("${todo.title} (${todo.getRepeatTypeName()})")
+                }
+
+                val notification = notificationBuilder.build()
 
                 // 显示通知 - 使用 try-catch 捕获权限异常
                 with(NotificationManagerCompat.from(context)) {
@@ -202,7 +193,6 @@ class ReminderScheduler {
                         Log.d(TAG, "已触发提醒通知: ${todo.title}")
                     } catch (e: SecurityException) {
                         Log.e(TAG, "发送通知权限被拒绝", e)
-                        // 可以在这里尝试其他提醒方式
                     } catch (e: Exception) {
                         Log.e(TAG, "发送通知失败", e)
                     }
@@ -216,7 +206,10 @@ class ReminderScheduler {
         fun rescheduleAllReminders(context: Context, todos: List<TodoItem>) {
             val now = System.currentTimeMillis()
             todos.forEach { todo ->
-                if (todo.remindTime > 0 && !todo.isCompleted && !todo.hasReminded && todo.remindTime > now) {
+                if ((todo.remindTime > 0 || todo.nextRemindTime > 0) &&
+                    !todo.isCompleted &&
+                    !todo.hasReminded &&
+                    (if (todo.nextRemindTime > 0) todo.nextRemindTime else todo.remindTime) > now) {
                     scheduleReminder(context, todo)
                 }
             }
