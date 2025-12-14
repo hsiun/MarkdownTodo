@@ -255,6 +255,43 @@ class NoteManager(private val context: Context) {
             throw e
         }
     }
+    // 在 NoteManager 类中添加
+    fun replaceAllNotes(newNotes: List<NoteItem>) {
+        try {
+            Log.d(TAG, "替换所有笔记，新笔记数量: ${newNotes.size}")
+
+            // 清空当前笔记列表
+            notes.clear()
+
+            // 清空笔记目录
+            if (notesDir.exists() && notesDir.isDirectory) {
+                notesDir.deleteRecursively()
+                notesDir.mkdirs()
+            }
+
+            // 重新添加所有笔记
+            newNotes.forEach { note ->
+                notes.add(note)
+                saveNoteToFile(note)
+            }
+
+            // 更新最大ID
+            if (newNotes.isNotEmpty()) {
+                nextId = newNotes.maxOf { it.id } + 1
+            } else {
+                nextId = 1
+            }
+
+            saveMaxId()
+
+            // 通知监听器
+            noteChangeListener?.onNotesChanged(notes)
+            Log.d(TAG, "已替换所有笔记: ${notes.size} 条")
+        } catch (e: Exception) {
+            Log.e(TAG, "替换所有笔记失败", e)
+            noteChangeListener?.onNoteError("替换所有笔记失败: ${e.message}")
+        }
+    }
 
     fun getNotesStatistics(): NoteStatistics {
         val total = notes.size

@@ -154,7 +154,8 @@ class SyncManager(
 
                                 // 更新本地数据
                                 todoManager.replaceAllTodos(mergedTodos)
-
+                                // 添加：更新本地笔记数据
+                                noteManager.replaceAllNotes(mergedNotes)
                                 // 保存到Git仓库目录
                                 val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
                                 saveTodosToGitRepo(mergedTodos, remoteTodoFile)
@@ -468,29 +469,35 @@ class SyncManager(
         }
 
         val mergedMap = mutableMapOf<String, NoteItem>()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-        // 先添加远程的所有笔记，远程优先
-        remoteNotes.forEach { remoteNote ->
-            mergedMap[remoteNote.uuid] = remoteNote
+        // 收集所有笔记（本地+远程）
+        val allNotes = mutableListOf<NoteItem>().apply {
+            addAll(localNotes)
+            addAll(remoteNotes)
         }
 
-        // 然后处理本地的笔记
-        localNotes.forEach { localNote ->
-            val existingNote = mergedMap[localNote.uuid]
+        // 按照UUID分组，比较更新时间，保留最新的
+        allNotes.forEach { note ->
+            val existing = mergedMap[note.uuid]
 
-            if (existingNote == null) {
-                // 远程没有这个笔记，添加本地笔记
-                mergedMap[localNote.uuid] = localNote
+            if (existing == null) {
+                mergedMap[note.uuid] = note
             } else {
-                // 远程有这个笔记，比较更新时间，使用最新的
-                val localUpdated = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(localNote.updatedAt)
-                val remoteUpdated = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(existingNote.updatedAt)
+                try {
+                    val existingTime = dateFormat.parse(existing.updatedAt) ?: Date(0)
+                    val noteTime = dateFormat.parse(note.updatedAt) ?: Date(0)
 
-                if (localUpdated != null && remoteUpdated != null && localUpdated.after(remoteUpdated)) {
-                    // 本地更新，使用本地版本
-                    mergedMap[localNote.uuid] = localNote
+                    if (noteTime.after(existingTime)) {
+                        mergedMap[note.uuid] = note
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "解析笔记时间失败: ${e.message}")
+                    // 解析失败时，使用ID更大的（假设更新更晚）
+                    if (note.id > existing.id) {
+                        mergedMap[note.uuid] = note
+                    }
                 }
-                // 否则保持远程版本
             }
         }
 
