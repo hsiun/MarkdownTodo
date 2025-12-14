@@ -1,6 +1,7 @@
 package com.hsiun.markdowntodo
 
 import android.R
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -68,6 +69,8 @@ class MainActivity : AppCompatActivity(),
 
         // 保存实例引用
         instance = this
+        // 处理通知点击
+        handleNotificationClick(intent)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -80,6 +83,10 @@ class MainActivity : AppCompatActivity(),
         // 初始化所有管理器
         initManagers()
 
+        // 设置TodoDialogManager的FragmentManager
+        todoDialogManager.setFragmentManager(supportFragmentManager)
+        // 新增：初始化提醒调度
+        initReminderScheduler()
         // 设置ViewPager和页面
         setupViewPager()
 
@@ -98,6 +105,22 @@ class MainActivity : AppCompatActivity(),
         Log.d("MainActivity", "应用启动完成")
     }
 
+    private fun handleNotificationClick(intent: Intent?) {
+        val todoId = intent?.getIntExtra("open_todo_id", -1) ?: -1
+        if (todoId != -1) {
+            // 延迟一段时间，确保UI已初始化
+            Handler(Looper.getMainLooper()).postDelayed({
+                openTodoById(todoId)
+            }, 500)
+        }
+    }
+    private fun initReminderScheduler() {
+        // 检查并重新调度所有未触发的提醒
+        todoManager.rescheduleAllReminders()
+
+        // 检查是否有到期的提醒需要立即触发
+        todoManager.checkAndTriggerReminders()
+    }
     private fun initManagers() {
         // 初始化SettingsManager
         settingsManager = SettingsManager(this)
@@ -241,9 +264,9 @@ class MainActivity : AppCompatActivity(),
     }
 
     // TodoDialogManager.TodoDialogListener 实现
-    override fun onAddTodo(title: String, setReminder: Boolean) {
+    override fun onAddTodo(title: String, setReminder: Boolean, remindTime: Long) {
         try {
-            val todo = todoManager.addTodo(title, setReminder)
+            val todo = todoManager.addTodo(title, setReminder, remindTime)
             syncManager.autoPushTodo("添加", todo)
             Toast.makeText(this, "已添加: $title", Toast.LENGTH_SHORT).show()
             updatePageCounts()
@@ -252,9 +275,9 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    override fun onUpdateTodo(id: Int, newTitle: String, setReminder: Boolean) {
+    override fun onUpdateTodo(id: Int, newTitle: String, setReminder: Boolean, remindTime: Long) {
         try {
-            val todo = todoManager.updateTodo(id, newTitle, setReminder)
+            val todo = todoManager.updateTodo(id, newTitle, setReminder, remindTime)
             syncManager.autoPushTodo("更新", todo)
             Toast.makeText(this, "已更新: $newTitle", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -593,6 +616,18 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    // 添加打开特定待办的方法（用于通知点击）
+    fun openTodoById(todoId: Int) {
+        val todo = todoManager.getTodoById(todoId)
+        if (todo != null) {
+            // 切换到待办页面
+            binding.viewPager.currentItem = 0
+            // 打开编辑对话框
+            todoDialogManager.showEditTodoDialog(todo, this)
+        }
+    }
+
+    // 在onResume方法中添加检查提醒
     override fun onResume() {
         super.onResume()
         val currentTime = System.currentTimeMillis()
@@ -601,6 +636,9 @@ class MainActivity : AppCompatActivity(),
         if (currentTime - lastSyncTime > 5 * 60 * 1000) { // 5分钟自动同步
             performSync()
         }
+
+        // 新增：每次回到应用时检查提醒
+        todoManager.checkAndTriggerReminders()
     }
 
     override fun onPause() {

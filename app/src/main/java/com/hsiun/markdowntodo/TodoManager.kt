@@ -106,23 +106,25 @@ class TodoManager(private val context: Context) {
         return todos.find { it.id == id }
     }
 
-    fun addTodo(title: String, setReminder: Boolean = false): TodoItem {
+    fun addTodo(title: String, setReminder: Boolean = false, remindTime: Long = -1L): TodoItem {
         return try {
             if (title.trim().isEmpty()) {
                 throw IllegalArgumentException("标题不能为空")
             }
 
             val newId = nextId++
-            val todo = TodoItem(id = newId, title = title)
+            val todo = TodoItem(id = newId, title = title, remindTime = if (setReminder) remindTime else -1L)
 
-            Log.d(TAG, "添加待办事项: ID=$newId, 标题='$title'")
+            Log.d(TAG, "添加待办事项: ID=$newId, 标题='$title', 提醒时间=${if (setReminder) remindTime else "未设置"}")
 
             todos.add(todo)
             saveLocalTodos()
             saveMaxId()
 
-            if (setReminder) {
-                Log.d(TAG, "设置了提醒")
+            if (setReminder && remindTime > 0) {
+                // 设置提醒
+                ReminderScheduler.scheduleReminder(context, todo)
+                Log.d(TAG, "设置了提醒: ${todo.formatRemindTime()}")
             }
 
             todoChangeListener?.onTodoAdded(todo)
@@ -134,7 +136,7 @@ class TodoManager(private val context: Context) {
         }
     }
 
-    fun updateTodo(id: Int, newTitle: String, setReminder: Boolean = false): TodoItem {
+    fun updateTodo(id: Int, newTitle: String, setReminder: Boolean = false, remindTime: Long = -1L): TodoItem {
         return try {
             if (newTitle.trim().isEmpty()) {
                 throw IllegalArgumentException("标题不能为空")
@@ -147,17 +149,24 @@ class TodoManager(private val context: Context) {
 
             val oldTodo = todos[todoIndex]
 
-            if (oldTodo.title == newTitle) {
-                throw IllegalArgumentException("内容未更改")
+            // 如果之前有提醒，先取消
+            if (oldTodo.remindTime > 0) {
+                ReminderScheduler.cancelReminder(context, oldTodo)
             }
 
-            val updatedTodo = oldTodo.copy(title = newTitle)
+            val updatedTodo = oldTodo.copy(
+                title = newTitle,
+                remindTime = if (setReminder) remindTime else -1L,
+                hasReminded = if (!setReminder) false else oldTodo.hasReminded
+            )
             todos[todoIndex] = updatedTodo
 
             saveLocalTodos()
 
-            if (setReminder) {
-                Log.d(TAG, "设置了提醒")
+            if (setReminder && remindTime > 0) {
+                // 设置新的提醒
+                ReminderScheduler.scheduleReminder(context, updatedTodo)
+                Log.d(TAG, "更新了提醒: ${updatedTodo.formatRemindTime()}")
             }
 
             todoChangeListener?.onTodoUpdated(updatedTodo)
@@ -178,6 +187,12 @@ class TodoManager(private val context: Context) {
 
             val oldTodo = todos[todoIndex]
             val updatedTodo = oldTodo.copy(isCompleted = !oldTodo.isCompleted)
+
+            // 如果标记为完成，取消提醒
+            if (updatedTodo.isCompleted && oldTodo.remindTime > 0) {
+                ReminderScheduler.cancelReminder(context, updatedTodo)
+            }
+
             todos[todoIndex] = updatedTodo
 
             saveLocalTodos()
@@ -200,6 +215,11 @@ class TodoManager(private val context: Context) {
             val todoToDelete = todos[todoIndex]
             todos.removeAt(todoIndex)
 
+            // 取消提醒
+            if (todoToDelete.remindTime > 0) {
+                ReminderScheduler.cancelReminder(context, todoToDelete)
+            }
+
             saveLocalTodos()
             todoChangeListener?.onTodoDeleted(todoToDelete)
             todoToDelete
@@ -208,6 +228,53 @@ class TodoManager(private val context: Context) {
             todoChangeListener?.onTodoError("删除失败: ${e.message}")
             throw e
         }
+    }
+
+    // 新增：获取所有需要提醒的待办
+    fun getTodosWithReminder(): List<TodoItem> {
+        return todos.filter { it.remindTime > 0 && !it.isCompleted && !it.hasReminded }
+    }
+
+    // 新增：检查并触发到期的提醒
+    fun checkAndTriggerReminders() {
+        val now = System.currentTimeMillis()
+        val todosToRemind = todos.filter {
+            it.remindTime > 0 &&
+                    !it.hasReminded &&
+                    !it.isCompleted &&
+                    now >= it.remindTime
+        }
+
+        todosToRemind.forEach { todo ->
+            // 触发提醒
+            ReminderScheduler.triggerReminder(context, todo)
+            // 标记为已提醒
+            markAsReminded(todo.id)
+        }
+    }
+
+    // 新增：标记为已提醒
+    private fun markAsReminded(id: Int): TodoItem? {
+        val todoIndex = todos.indexOfFirst { it.id == id }
+        if (todoIndex == -1) return null
+
+        val oldTodo = todos[todoIndex]
+        val updatedTodo = oldTodo.copy(hasReminded = true)
+        todos[todoIndex] = updatedTodo
+
+        saveLocalTodos()
+        todoChangeListener?.onTodoUpdated(updatedTodo)
+
+        return updatedTodo
+    }
+
+    // 新增：重新调度所有提醒
+    fun rescheduleAllReminders() {
+        val todosWithReminder = getTodosWithReminder()
+        todosWithReminder.forEach { todo ->
+            ReminderScheduler.scheduleReminder(context, todo)
+        }
+        Log.d(TAG, "重新调度了 ${todosWithReminder.size} 个提醒")
     }
 
     fun deleteTodoByUuid(uuid: String): Boolean {

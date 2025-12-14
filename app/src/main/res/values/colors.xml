@@ -35,4 +35,9 @@
     <!-- 悬浮按钮 颜色 -->
     <color name="button_fab">#FF9800</color>
 
+    <!-- 提醒相关颜色 -->
+    <color name="reminder_pending">#FF9800</color>
+    <color name="reminder_overdue">#F44336</color>
+    <color name="reminder_done">#4CAF50</color>
+
 </resources>

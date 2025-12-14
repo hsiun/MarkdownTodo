@@ -18,49 +18,70 @@
         android:focusable="true"
         android:gravity="center_vertical"
         android:minHeight="56dp"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="12dp">
+        android:paddingVertical="8dp">
 
-        <CheckBox
-            android:id="@+id/checkbox"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="10dp"
-            android:buttonTint="@color/checkbox_tint"
-            app:buttonTint="@color/checkbox_tint" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <!-- 自适应高度 TextView -->
+            <CheckBox
+                android:id="@+id/checkbox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:buttonTint="@color/checkbox_tint"
+                app:buttonTint="@color/checkbox_tint" />
+
+            <!-- 自适应高度 TextView -->
+            <TextView
+                android:id="@+id/titleText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:gravity="start|center_vertical"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.01"
+                android:lineSpacingMultiplier="1.0"
+                android:maxLines="2"
+                android:paddingVertical="2dp"
+                android:singleLine="false"
+                android:textAllCaps="false"
+                android:textColor="#333333"
+                android:textSize="16sp"
+                android:textStyle="normal" />
+
+            <!-- 删除按钮（默认隐藏） -->
+            <ImageButton
+                android:id="@+id/deleteButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="删除"
+                android:src="@drawable/ic_delete"
+                android:visibility="gone"
+                app:tint="#FF3B30" />
+
+        </LinearLayout>
+
+        <!-- 新增：提醒时间显示 -->
         <TextView
-            android:id="@+id/titleText"
-            android:layout_width="0dp"
+            android:id="@+id/reminderText"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:fontFamily="sans-serif"
-            android:gravity="start|center_vertical"
-            android:includeFontPadding="false"
-            android:letterSpacing="0.01"
-            android:lineSpacingMultiplier="1.0"
-            android:maxLines="2"
-            android:paddingVertical="2dp"
-            android:singleLine="false"
-            android:textAllCaps="false"
-            android:textColor="#333333"
-            android:textSize="16sp"
-            android:textStyle="normal" />
-
-        <!-- 删除按钮（默认隐藏） -->
-        <ImageButton
-            android:id="@+id/deleteButton"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="6dp"
-            android:background="?android:attr/selectableItemBackground"
-            android:contentDescription="删除"
-            android:src="@drawable/ic_delete"
+            android:layout_marginStart="34dp"
+            android:layout_marginTop="4dp"
+            android:textSize="12sp"
+            android:textColor="#FF9800"
             android:visibility="gone"
-            app:tint="#FF3B30" />
+            android:maxLines="1"
+            android:ellipsize="end" />
 
     </LinearLayout>
 

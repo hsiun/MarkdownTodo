@@ -56,6 +56,8 @@ class TodoAdapter(
         val titleText: TextView = view.findViewById(R.id.titleText)
         val deleteButton: ImageButton = view.findViewById(R.id.deleteButton)
         val itemContainer: LinearLayout = view.findViewById(R.id.itemContainer)
+        // 新增：提醒时间显示
+        val reminderText: TextView = view.findViewById(R.id.reminderText)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -97,6 +99,29 @@ class TodoAdapter(
         } else {
             holder.titleText.paintFlags = 0
             holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
+        }
+        // 显示提醒时间
+        val reminderStatus = todo.getReminderStatus()
+        if (reminderStatus.isNotEmpty()) {
+            holder.reminderText.visibility = View.VISIBLE
+            holder.reminderText.text = "提醒: $reminderStatus"
+
+            // 根据提醒状态设置不同颜色
+            when {
+                todo.hasReminded -> {
+                    holder.reminderText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
+                    holder.reminderText.text = "已提醒"
+                }
+                todo.remindTime > 0 && System.currentTimeMillis() >= todo.remindTime -> {
+                    holder.reminderText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.reminder_overdue))
+                    holder.reminderText.text = "待提醒"
+                }
+                else -> {
+                    holder.reminderText.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.reminder_pending))
+                }
+            }
+        } else {
+            holder.reminderText.visibility = View.GONE
         }
 
         // 设置复选框监听器 - 修复这里！！！
@@ -148,6 +173,9 @@ class TodoAdapter(
                         notifyDataSetChanged()
                     }
                 }
+
+
+
             } finally {
                 isUpdating = false
             }

@@ -29,7 +29,7 @@
         app:hintTextColor="#999999"
         app:endIconMode="clear_text"
         android:hint="输入待办事项内容"
-        android:layout_marginBottom="24dp">
+        android:layout_marginBottom="16dp">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/inputEditText"
@@ -49,11 +49,101 @@
         android:layout_height="0dp"
         android:visibility="gone" />
 
+    <!-- 提醒设置区域 -->
+    <LinearLayout
+        android:id="@+id/reminderContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/rounded_border_light"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="提醒设置"
+            android:textSize="14sp"
+            android:textColor="#333333"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <!-- 提醒时间选择 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="提醒时间："
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/reminderTimeText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="点击选择时间"
+                android:textSize="14sp"
+                android:textColor="#1976D2"
+                android:padding="12dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <Button
+                android:id="@+id/clearReminderButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="清除"
+                android:textSize="12sp"
+                android:layout_marginStart="8dp"
+                android:paddingHorizontal="12dp"
+                android:backgroundTint="#F44336"
+                android:textColor="#FFFFFF" />
+
+        </LinearLayout>
+
+        <!-- 重复设置 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="重复："
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:layout_marginEnd="8dp" />
+
+            <Spinner
+                android:id="@+id/repeatSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:entries="@array/repeat_options"
+                android:backgroundTint="#1976D2" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
     <!-- 设置提醒和完成按钮 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
         <!-- 设置提醒复选框 -->
         <LinearLayout
