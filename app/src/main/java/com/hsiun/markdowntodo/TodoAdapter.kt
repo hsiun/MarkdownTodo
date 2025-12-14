@@ -12,6 +12,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class TodoAdapter(
     private var todos: MutableList<TodoItem>,
@@ -196,37 +199,66 @@ class TodoAdapter(
         }
     }
 
-    // 确保 updateFilteredList 方法正确工作
+    // TodoAdapter.kt
+// 如果需要使用createdAt字段排序，可以添加一个辅助函数
+    private fun parseCreatedAtDate(todo: TodoItem): Date {
+        return try {
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(todo.createdAt) ?: Date(0)
+        } catch (e: Exception) {
+            Date(0)
+        }
+    }
+
+    // 然后修改updateFilteredList方法
     private fun updateFilteredList() {
         filteredTodos.clear()
+
         when (displayMode) {
             DisplayMode.ALL -> {
-                // 显示所有待办
-                filteredTodos.addAll(todos)
-                Log.d("TodoAdapter", "显示全部: ${todos.size} 条")
+                // 按创建时间降序（最新创建的在前）
+                val activeTodos = todos.filter { !it.isCompleted }
+                    .sortedByDescending { parseCreatedAtDate(it) }
+
+                val completedTodos = todos.filter { it.isCompleted }
+                    .sortedByDescending { parseCreatedAtDate(it) }
+
+                filteredTodos.addAll(activeTodos)
+                filteredTodos.addAll(completedTodos)
+
+                Log.d("TodoAdapter", "显示全部: 未完成 ${activeTodos.size} 条, 已完成 ${completedTodos.size} 条")
             }
             DisplayMode.ACTIVE -> {
+                // 只显示未完成的，按创建时间降序
                 val activeTodos = todos.filter { !it.isCompleted }
+                    .sortedByDescending { parseCreatedAtDate(it) }
+
                 filteredTodos.addAll(activeTodos)
-                Log.d("TodoAdapter", "显示未完成: ${activeTodos.size} 条, 总共: ${todos.size} 条")
+                Log.d("TodoAdapter", "显示未完成: ${activeTodos.size} 条")
             }
             DisplayMode.COMPLETED -> {
+                // 只显示已完成的，按创建时间降序
                 val completedTodos = todos.filter { it.isCompleted }
+                    .sortedByDescending { parseCreatedAtDate(it) }
+
                 filteredTodos.addAll(completedTodos)
-                Log.d("TodoAdapter", "显示已完成: ${completedTodos.size} 条, 总共: ${todos.size} 条")
+                Log.d("TodoAdapter", "显示已完成: ${completedTodos.size} 条")
             }
         }
+
+        // 通知显示模式变化监听器
+        displayModeChangeListener?.onDisplayModeChanged(displayMode, filteredTodos.size)
     }
 
     // 获取当前显示模式
     fun getDisplayMode(): DisplayMode = displayMode
+
 
     fun updateTodos(newTodos: List<TodoItem>) {
         // 更新内部列表
         todos.clear()
         todos.addAll(newTodos)
 
-        // 更新过滤列表
+        // 更新过滤列表（应用新的排序逻辑）
         updateFilteredList()
 
         // 通知数据已更改

@@ -74,7 +74,8 @@ class TodoManager(private val context: Context) {
             }
 
             val loadedTodos = readTodosFromFile(todoFile)
-            val sortedTodos = loadedTodos.sortedBy { it.id }
+            // 新添加的放在前面
+            val sortedTodos = loadedTodos.sortedBy { it.id }.reversed()
 
             Log.d(TAG, "加载到 ${sortedTodos.size} 条待办事项")
 

@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.preference.PreferenceManager
-import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -23,6 +22,7 @@ import android.graphics.Typeface
 import android.util.Log
 import android.view.Gravity
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity(),
     TodoManager.TodoChangeListener,
@@ -153,13 +153,14 @@ class MainActivity : AppCompatActivity(),
                             intArrayOf(-R.attr.state_selected)
                         ),
                         intArrayOf(
-                            Color.parseColor("#865EDC"), // 选中时的颜色
+                            Color.parseColor("#FF9800"), // 选中时的颜色
                             Color.parseColor("#666666")  // 未选中时的颜色
                         )
                     )
                 )
                 textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
+
             }
 
             tab.customView = tabView

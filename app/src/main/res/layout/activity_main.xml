@@ -51,7 +51,7 @@
                     android:layout_height="32dp"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:contentDescription="设置"
-                    android:src="@android:drawable/ic_menu_preferences"
+                    android:src="@drawable/ic_menu_settings"
                     app:tint="#333333" />
 
             </LinearLayout>
@@ -83,19 +83,21 @@
             app:tabIndicatorHeight="3dp"
             app:tabMode="fixed"
             app:tabRippleColor="@android:color/transparent"
-            app:tabSelectedTextColor="#865EDC"
+            app:tabSelectedTextColor="@color/button_fab"
             app:tabTextColor="#666666">
 
             <com.google.android.material.tabs.TabItem
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:icon="@drawable/ic_todo_filled"
                 android:text="待办" />
 
             <com.google.android.material.tabs.TabItem
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:icon="@drawable/ic_notes_outline"
                 android:text="笔记" />
 
         </com.google.android.material.tabs.TabLayout>
