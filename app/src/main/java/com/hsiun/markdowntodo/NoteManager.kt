@@ -355,4 +355,16 @@ class NoteManager(private val context: Context) {
         val averageLength: Int,
         val recentNotes: List<NoteItem>
     )
+
+    fun verifyNoteDeleted(id: Int): Boolean {
+        val noteExistsInList = notes.any { it.id == id }
+
+        val noteFile = notesDir.listFiles { file ->
+            file.name.startsWith("note_${id}_")
+        }?.firstOrNull()
+
+        Log.d(TAG, "验证笔记删除 - ID=$id: 列表中存在=$noteExistsInList, 文件存在=${noteFile?.exists()}")
+
+        return !noteExistsInList && noteFile == null
+    }
 }

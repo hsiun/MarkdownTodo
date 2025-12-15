@@ -4,6 +4,7 @@ import NoteItem
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import android.widget.Toast
 import kotlinx.coroutines.*
 import java.io.File
 import java.text.SimpleDateFormat
@@ -138,7 +139,6 @@ class SyncManager(
     }
 
     // 修改 pullAndMergeChanges 方法
-// SyncManager.kt - 修改 pullAndMergeChanges 方法
     private suspend fun pullAndMergeChanges() {
         try {
             val success = suspendCoroutine<Boolean> { continuation ->
@@ -182,13 +182,11 @@ class SyncManager(
                                 // 更新本地笔记数据
                                 noteManager.replaceAllNotes(mergedNotes)
 
-                                // 重要：不要在这里保存到Git仓库目录！
-                                // 我们将在提交时重新生成文件
+                                // 准备要提交的文件（包含删除标记）
+                                prepareFilesForCommit(mergedTodos, mergedNotes)
 
                                 syncListener?.onSyncProgress("合并完成")
 
-                                // 准备要提交的文件
-                                prepareFilesForCommit(mergedTodos, mergedNotes)
 
                                 // 提交合并后的更改
                                 val commitMessage = "同步合并 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
@@ -411,6 +409,11 @@ class SyncManager(
 
         syncScope.launch {
             try {
+                if (operation.contains("删除") && note != null) {
+                    Log.d(TAG, "处理删除笔记操作: ${note.title}")
+                    deleteNoteFromGit(note)  // 直接调用专门的删除方法
+                    return@launch
+                }
                 syncListener?.onSyncProgress("自动推送笔记: $operation")
 
                 // 将笔记目录复制到Git仓库目录
@@ -610,6 +613,53 @@ class SyncManager(
             }
         } catch (e: Exception) {
             Pair(-1, "")
+        }
+    }
+
+    fun deleteNoteFromGit(note: NoteItem) {
+        Log.d(TAG, "deleteNoteFromGit: 开始删除笔记, ID=${note.id}, UUID=${note.uuid}")
+
+        if (!::gitManager.isInitialized) {
+            Log.w(TAG, "GitManager未初始化")
+            return
+        }
+
+        val repoDir = File(context.filesDir, GIT_REPO_DIR)
+        val gitConfig = File(repoDir, ".git/config")
+
+        if (!gitConfig.exists()) {
+            Log.w(TAG, "Git仓库不存在")
+            return
+        }
+
+        syncScope.launch {
+            try {
+                // 使用专门的Git删除方法
+                gitManager.removeFile(
+                    filePattern = "notes/note_${note.id}_${note.uuid}.md",
+                    commitMessage = "删除笔记: ${note.title}",
+                    onSuccess = {
+                        Log.d(TAG, "删除笔记同步成功: ${note.title}")
+                        syncScope.launch {
+                            withContext(Dispatchers.Main) {
+                                syncListener?.onSyncProgress("删除笔记同步成功")
+                                syncListener?.onSyncStatusChanged("✅")
+                                Toast.makeText(context, "笔记已从云端删除", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onError = { error ->
+                        Log.e(TAG, "删除笔记同步失败: $error")
+                        syncScope.launch {
+                            withContext(Dispatchers.Main) {
+                                syncListener?.onSyncError("删除同步失败: $error")
+                            }
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "删除笔记同步异常", e)
+            }
         }
     }
 }

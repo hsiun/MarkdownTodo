@@ -501,16 +501,46 @@ class MainActivity : AppCompatActivity(),
     }
 
     // 笔记确认删除对话框
+// MainActivity.kt
     fun showDeleteNoteConfirmationDialog(note: NoteItem) {
         AlertDialog.Builder(this)
             .setTitle("删除笔记")
             .setMessage("确定要删除 '${note.title}' 吗？")
             .setPositiveButton("删除") { dialog, which ->
-                noteManager.deleteNote(note.id)
-                syncManager.autoPushNote("删除笔记", note)
+                Log.d("MainActivity", "开始删除笔记: ${note.title}")
+
+                try {
+                    // 1. 删除本地数据
+                    val deletedNote = noteManager.deleteNote(note.id)
+
+                    // 2. 删除Git仓库中的文件
+                    syncManager.deleteNoteFromGit(deletedNote)
+
+                    // 3. 立即更新UI
+                    updatePageCounts()
+
+                    Toast.makeText(this, "已删除笔记", Toast.LENGTH_SHORT).show()
+
+                    // 4. 记录删除日志
+                    Log.d("MainActivity", "笔记删除完成: ${note.title}, 剩余笔记: ${noteManager.getAllNotes().size}")
+
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "删除笔记失败", e)
+                    Toast.makeText(this, "删除失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("取消", null)
             .show()
+
+        // 在删除后添加验证
+        Handler(Looper.getMainLooper()).postDelayed({
+            val isDeleted = noteManager.verifyNoteDeleted(note.id)
+            Log.d("MainActivity", "笔记删除验证结果: ID=${note.id}, 是否删除=$isDeleted")
+
+            if (!isDeleted) {
+                Toast.makeText(this, "警告：笔记可能未被完全删除", Toast.LENGTH_LONG).show()
+            }
+        }, 1000)
     }
 
     // SettingsDialogManager.SettingsDialogListener 实现

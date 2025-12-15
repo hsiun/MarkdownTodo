@@ -263,7 +263,93 @@ class GitManager(
             }
         }
     }
+    // GitManager.kt - 添加删除单个文件的方法
+    fun removeFile(
+        filePattern: String,
+        commitMessage: String = "删除文件",
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        coroutineScope.launch {
+            try {
+                val result = synchronized(lock) {
+                    try {
+                        val repository = FileRepositoryBuilder()
+                            .setGitDir(File(repoDir, ".git"))
+                            .build()
 
+                        repository.use { repo ->
+                            Git(repo).use { git ->
+                                // 清理可能存在的锁文件
+                                cleanupLockFiles()
+
+                                Log.d(TAG, "开始删除文件: $filePattern")
+
+                                // 检查文件是否存在
+                                val fileToDelete = File(repoDir, filePattern)
+                                if (!fileToDelete.exists()) {
+                                    Log.w(TAG, "文件不存在，跳过删除: $filePattern")
+                                    return@synchronized Pair(true, "文件不存在")
+                                }
+
+                                // 使用 git.rm() 删除文件
+                                git.rm()
+                                    .addFilepattern(filePattern)
+                                    .call()
+
+                                Log.d(TAG, "已标记删除文件: $filePattern")
+
+                                // 检查是否有需要提交的更改
+                                val status = git.status().call()
+                                if (status.isClean) {
+                                    Log.d(TAG, "没有需要提交的更改")
+                                    return@synchronized Pair(true, "没有需要提交的更改")
+                                }
+
+                                // 提交删除操作
+                                val commit = git.commit()
+                                    .setMessage(commitMessage)
+                                    .call()
+
+                                if (commit == null) {
+                                    throw Exception("提交失败")
+                                }
+
+                                Log.d(TAG, "删除提交成功: ${commit.id.name} - $commitMessage")
+
+                                // 推送
+                                git.push()
+                                    .setRemote("origin")
+                                    .setCredentialsProvider(getCredentialsProvider())
+                                    .call()
+
+                                Log.d(TAG, "推送删除成功")
+                                Pair(true, null)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "删除文件失败", e)
+                        Pair(false, "删除文件失败: ${e.localizedMessage ?: e.message}")
+                    }
+                }
+
+                if (result.first) {
+                    withContext(Dispatchers.Main) {
+                        onSuccess()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onError(result.second ?: "未知错误")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "removeFile 异常", e)
+                withContext(Dispatchers.Main) {
+                    onError("removeFile 异常: ${e.localizedMessage ?: e.message}")
+                }
+            }
+        }
+    }
     fun cleanup() {
         coroutineScope.cancel()
     }
