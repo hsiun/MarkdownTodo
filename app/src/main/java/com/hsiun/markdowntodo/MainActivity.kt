@@ -1,5 +1,6 @@
 package com.hsiun.markdowntodo
 
+import NoteItem
 import android.R
 import android.content.Intent
 import android.graphics.Color

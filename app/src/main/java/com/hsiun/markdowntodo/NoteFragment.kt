@@ -1,5 +1,6 @@
 package com.hsiun.markdowntodo
 
+import NoteItem
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View

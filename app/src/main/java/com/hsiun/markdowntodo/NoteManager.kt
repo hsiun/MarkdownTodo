@@ -1,9 +1,13 @@
 // NoteManager.kt
 package com.hsiun.markdowntodo
 
+import NoteItem
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class NoteManager(private val context: Context) {
 
@@ -87,18 +91,31 @@ class NoteManager(private val context: Context) {
             val loadedNotes = mutableListOf<NoteItem>()
             noteFiles.forEach { file ->
                 try {
-                    val content = file.readText()
-                    val note = NoteItem.fromMarkdown(content)
-                    note?.let {
-                        loadedNotes.add(it)
+                    // 从文件名解析ID和UUID
+                    val (id, uuid) = parseIdAndUuidFromFilename(file.name)
+
+                    if (id == -1 || uuid.isNullOrEmpty()) {
+                        Log.w(TAG, "文件名格式不正确，跳过: ${file.name}")
+                        return@forEach
                     }
+
+                    val content = file.readText()
+                    // 传入从文件名解析的ID和UUID
+                    val note = NoteItem.fromMarkdown(content, id, uuid)
+                    note?.let { loadedNotes.add(it) }
                 } catch (e: Exception) {
                     Log.e(TAG, "读取笔记文件失败: ${file.name}", e)
                 }
             }
 
-            // 按ID排序
-            notes.addAll(loadedNotes.sortedBy { it.id })
+            // 按更新时间降序排序
+            notes.addAll(loadedNotes.sortedByDescending {
+                try {
+                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(it.updatedAt) ?: Date()
+                } catch (e: Exception) {
+                    Date()
+                }
+            })
 
             if (notes.isNotEmpty()) {
                 nextId = notes.maxOf { it.id } + 1
@@ -112,6 +129,36 @@ class NoteManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "加载笔记失败", e)
             noteChangeListener?.onNoteError("加载笔记失败: ${e.message}")
+        }
+    }
+
+    // 从文件名解析ID和UUID的辅助方法
+    private fun parseIdAndUuidFromFilename(filename: String): Pair<Int, String> {
+        return try {
+            // 文件名格式：note_{id}_{uuid}.md
+            val pattern = Regex("note_(\\d+)_([a-f0-9-]+)\\.md")
+            val match = pattern.find(filename)
+
+            if (match != null && match.groupValues.size >= 3) {
+                val id = match.groupValues[1].toInt()
+                val uuid = match.groupValues[2]
+                Pair(id, uuid)
+            } else {
+                // 尝试旧的格式（包含UUID在文件名中）
+                val oldPattern = Regex("note_(\\d+)_([^_]+)\\.md")
+                val oldMatch = oldPattern.find(filename)
+
+                if (oldMatch != null && oldMatch.groupValues.size >= 3) {
+                    val id = oldMatch.groupValues[1].toInt()
+                    val uuid = oldMatch.groupValues[2]
+                    Pair(id, uuid)
+                } else {
+                    Pair(-1, "")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "解析文件名失败: $filename", e)
+            Pair(-1, "")
         }
     }
 

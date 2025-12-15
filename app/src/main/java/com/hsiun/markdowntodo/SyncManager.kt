@@ -1,5 +1,6 @@
 package com.hsiun.markdowntodo
 
+import NoteItem
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -413,12 +414,6 @@ class SyncManager(
                     syncListener?.onSyncProgress("已复制 ${noteFiles?.size ?: 0} 个笔记文件到Git目录")
                 }
 
-                // 将待办事项文件也复制到Git仓库目录（保持同步）
-                val localTodoFile = File(context.filesDir, "todos.md")
-                val remoteTodoFile = File(repoDir, "todos.md")
-                if (localTodoFile.exists()) {
-                    localTodoFile.copyTo(remoteTodoFile, overwrite = true)
-                }
 
                 // 检查是否有笔记文件需要推送
                 val hasNotesFiles = remoteNotesDir.exists() &&
@@ -427,9 +422,6 @@ class SyncManager(
                 // 准备要添加的文件模式
                 val filePatterns = mutableListOf<String>()
 
-                if (remoteTodoFile.exists()) {
-                    filePatterns.add("todos.md")
-                }
 
                 if (hasNotesFiles) {
                     filePatterns.add("notes/")  // 添加整个 notes 目录
@@ -478,50 +470,111 @@ class SyncManager(
                 file.isFile && file.name.endsWith(".md")
             }?.forEach { file ->
                 try {
+                    // 从文件名解析ID和UUID
+                    val (id, uuid) = parseIdAndUuidFromFilename(file.name)
+
+                    if (id == -1 || uuid.isEmpty()) {
+                        Log.w(TAG, "远程笔记文件名格式不正确，跳过: ${file.name}")
+                        return@forEach
+                    }
+
                     val content = file.readText()
-                    val note = NoteItem.fromMarkdown(content)
-                    note?.let { remoteNotes.add(it) }
+                    Log.d(TAG, "读取远程笔记文件: ${file.name}, 内容长度: ${content.length}")
+
+                    // 传入从文件名解析的ID和UUID
+                    val note = NoteItem.fromMarkdown(content, id, uuid)
+                    note?.let {
+                        remoteNotes.add(it)
+                        Log.d(TAG, "解析远程笔记: ID=${it.id}, UUID=${it.uuid}, 标题='${it.title}', updatedAt=${it.updatedAt}")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "读取远程笔记文件失败: ${file.name}", e)
                 }
             }
         }
 
+        Log.d(TAG, "合并笔记: 本地 ${localNotes.size} 条, 远程 ${remoteNotes.size} 条")
+
+        // 调试：打印本地笔记信息
+        localNotes.forEach { note ->
+            Log.d(TAG, "本地笔记: ID=${note.id}, UUID=${note.uuid}, 标题='${note.title}', updatedAt=${note.updatedAt}")
+        }
+
         val mergedMap = mutableMapOf<String, NoteItem>()
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-        // 收集所有笔记（本地+远程）
-        val allNotes = mutableListOf<NoteItem>().apply {
-            addAll(localNotes)
-            addAll(remoteNotes)
+        // 先添加本地所有笔记（本地优先）
+        localNotes.forEach { localNote ->
+            mergedMap[localNote.uuid] = localNote
         }
 
-        // 按照UUID分组，比较更新时间，保留最新的
-        allNotes.forEach { note ->
-            val existing = mergedMap[note.uuid]
+        // 然后处理远程的笔记
+        remoteNotes.forEach { remoteNote ->
+            val existingNote = mergedMap[remoteNote.uuid]
 
-            if (existing == null) {
-                mergedMap[note.uuid] = note
+            if (existingNote == null) {
+                // 远程有而本地没有的笔记，添加
+                mergedMap[remoteNote.uuid] = remoteNote
+                Log.d(TAG, "添加新笔记: ID=${remoteNote.id}, UUID=${remoteNote.uuid}")
             } else {
+                // 两者都存在，根据更新时间判断
                 try {
-                    val existingTime = dateFormat.parse(existing.updatedAt) ?: Date(0)
-                    val noteTime = dateFormat.parse(note.updatedAt) ?: Date(0)
+                    val localTime = dateFormat.parse(existingNote.updatedAt) ?: Date(0)
+                    val remoteTime = dateFormat.parse(remoteNote.updatedAt) ?: Date(0)
 
-                    if (noteTime.after(existingTime)) {
-                        mergedMap[note.uuid] = note
+                    Log.d(TAG, "笔记比较 - ID=${existingNote.id}:")
+                    Log.d(TAG, "  本地时间: ${existingNote.updatedAt} -> $localTime")
+                    Log.d(TAG, "  远程时间: ${remoteNote.updatedAt} -> $remoteTime")
+                    Log.d(TAG, "  本地内容: '${existingNote.content.take(50)}...'")
+                    Log.d(TAG, "  远程内容: '${remoteNote.content.take(50)}...'")
+
+                    // 优先使用更新时间更晚的
+                    val comparison = remoteTime.compareTo(localTime)
+                    Log.d(TAG, "  时间比较结果: $comparison (正数表示远程更新)")
+
+                    if (remoteTime.after(localTime)) {
+                        Log.d(TAG, "  使用远程版本")
+                        mergedMap[remoteNote.uuid] = remoteNote
+                    } else if (localTime.after(remoteTime)) {
+                        Log.d(TAG, "  使用本地版本")
+                        // 不需要操作，已经是本地版本
+                    } else {
+                        // 时间相等，使用内容更长的（通常是更新后的）
+                        Log.d(TAG, "  时间相等，比较内容长度")
+                        if (remoteNote.content.length > existingNote.content.length) {
+                            Log.d(TAG, "  远程内容更长，使用远程版本")
+                            mergedMap[remoteNote.uuid] = remoteNote
+                        } else {
+                            Log.d(TAG, "  本地内容更长或不相等，使用本地版本")
+                        }
                     }
+
                 } catch (e: Exception) {
-                    Log.e(TAG, "解析笔记时间失败: ${e.message}")
-                    // 解析失败时，使用ID更大的（假设更新更晚）
-                    if (note.id > existing.id) {
-                        mergedMap[note.uuid] = note
-                    }
+                    Log.e(TAG, "解析笔记时间失败，使用本地版本: ${e.message}")
+                    // 解析失败时，优先保留本地
                 }
             }
         }
 
+        Log.d(TAG, "合并后笔记数量: ${mergedMap.size}")
         return mergedMap.values.sortedBy { it.id }
     }
 
+    // 使用文件名解析ID和UUID的辅助方法
+    fun parseIdAndUuidFromFilename(filename: String): Pair<Int, String> {
+        return try {
+            val pattern = Regex("note_(\\d+)_([a-f0-9-]+)\\.md")
+            val match = pattern.find(filename)
 
+            if (match != null && match.groupValues.size >= 3) {
+                val id = match.groupValues[1].toInt()
+                val uuid = match.groupValues[2]
+                Pair(id, uuid)
+            } else {
+                Pair(-1, "")
+            }
+        } catch (e: Exception) {
+            Pair(-1, "")
+        }
+    }
 }

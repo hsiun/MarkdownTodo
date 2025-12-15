@@ -1,6 +1,7 @@
 // NoteDialogManager.kt
 package com.hsiun.markdowntodo
 
+import NoteItem
 import android.app.AlertDialog
 import android.content.Context
 import android.text.Editable

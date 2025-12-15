@@ -1,6 +1,7 @@
 // NoteAdapter.kt
 package com.hsiun.markdowntodo
 
+import NoteItem
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
