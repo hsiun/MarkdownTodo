@@ -3,6 +3,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.min
 
 // NoteItem.kt
 data class NoteItem(
@@ -19,21 +20,23 @@ data class NoteItem(
     ).format(Date()),
     val uuid: String = UUID.randomUUID().toString()
 ) {
+    // 保存到文件时使用完整格式（包含分隔符）
     fun toMarkdown(): String {
-        return "# $title\n\n" +
-                "> 创建时间: $createdAt  |  更新时间: $updatedAt\n\n" +
-                "---\n\n" +
-                content + "\n"
-        // 不再包含 ID 和 UUID
+        return "# $title\n" +
+                "> 创建时间: $createdAt | 更新时间: $updatedAt\n" +
+                "---\n" +
+                content.trim() + "\n" +
+                "---\n"
     }
 
     companion object {
+        // 从文件读取时解析完整格式
         fun fromMarkdown(text: String, id: Int? = null, uuid: String? = null): NoteItem? {
             return try {
                 val lines = text.lines()
                 if (lines.isEmpty()) return null
 
-                // 提取标题 (第一行去掉 # 和空格)
+                // 1. 提取标题
                 val titleLine = lines.first()
                 val title = if (titleLine.startsWith("# ")) {
                     titleLine.substring(2).trim()
@@ -41,60 +44,73 @@ data class NoteItem(
                     titleLine.trim()
                 }
 
-                // 解析元数据行
+                // 2. 解析元数据
                 var createdAt = ""
                 var updatedAt = ""
-                var contentStartIndex = 0
+
+                for (i in 1 until min(5, lines.size)) {
+                    val line = lines[i]
+                    if (line.startsWith("> 创建时间:")) {
+                        val parts = line.split("|")
+                        if (parts.isNotEmpty()) {
+                            createdAt = parts[0].replace("> 创建时间:", "").trim()
+                        }
+                        if (parts.size > 1) {
+                            updatedAt = parts[1].replace("更新时间:", "").trim()
+                        }
+                        break
+                    }
+                }
+
+                // 3. 提取内容（在第一个---和第二个---之间）
+                val contentBuilder = StringBuilder()
+                var inContent = false
                 var separatorCount = 0
 
-                // 查找元数据
                 for (i in lines.indices) {
                     val line = lines[i]
-                    when {
-                        line.startsWith("> 创建时间:") -> {
-                            val parts = line.split("|")
-                            if (parts.isNotEmpty()) {
-                                createdAt = parts[0].replace("> 创建时间:", "").trim()
-                            }
-                            if (parts.size > 1) {
-                                updatedAt = parts[1].replace("更新时间:", "").trim()
-                            }
+
+                    if (line == "---") {
+                        separatorCount++
+                        if (separatorCount == 1) {
+                            inContent = true
+                            continue  // 跳过分隔符本身
+                        } else if (separatorCount == 2) {
+                            break  // 内容结束
                         }
-                        line == "---" -> {
-                            separatorCount++
-                            if (separatorCount == 2) {
-                                contentStartIndex = i + 1
-                                break
-                            }
-                        }
+                    }
+
+                    if (inContent && separatorCount == 1) {
+                        contentBuilder.append(line).append("\n")
                     }
                 }
 
-                // 提取内容（在第二个---之后的部分）
-                val contentLines = mutableListOf<String>()
-                if (contentStartIndex > 0 && contentStartIndex < lines.size) {
-                    for (i in contentStartIndex until lines.size) {
-                        contentLines.add(lines[i])
+                var content = contentBuilder.toString().trim()
+
+                // 如果没找到标准格式，尝试兼容旧格式
+                if (content.isEmpty() && lines.size > 2) {
+                    // 可能是旧格式，从第三行开始是内容
+                    val contentLines = mutableListOf<String>()
+                    for (i in 2 until lines.size) {
+                        val line = lines[i]
+                        if (!line.startsWith("ID:") && !line.contains("UUID:")) {
+                            contentLines.add(line)
+                        }
                     }
+                    content = contentLines.joinToString("\n").trim()
                 }
 
-                val content = contentLines.joinToString("\n").trim()
-
-                // 如果没有解析到创建时间，使用当前时间
-                val finalCreatedAt = if (createdAt.isNotEmpty()) {
-                    createdAt
-                } else {
-                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                // 如果没找到时间，使用当前时间
+                if (createdAt.isEmpty()) {
+                    createdAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(
+                        Date()
+                    )
+                }
+                if (updatedAt.isEmpty()) {
+                    updatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
                 }
 
-                // 如果没有解析到更新时间，使用当前时间
-                val finalUpdatedAt = if (updatedAt.isNotEmpty()) {
-                    updatedAt
-                } else {
-                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-                }
-
-                // 使用传入的ID和UUID，如果没有则生成新的
+                // 使用传入的ID和UUID
                 val finalId = id ?: -1
                 val finalUuid = uuid ?: UUID.randomUUID().toString()
 
@@ -102,8 +118,8 @@ data class NoteItem(
                     id = finalId,
                     title = title,
                     content = content,
-                    createdAt = finalCreatedAt,
-                    updatedAt = finalUpdatedAt,
+                    createdAt = createdAt,
+                    updatedAt = updatedAt,
                     uuid = finalUuid
                 )
             } catch (e: Exception) {

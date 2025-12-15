@@ -212,11 +212,11 @@ class NoteManager(private val context: Context) {
             val oldNote = notes[noteIndex]
             val updatedNote = oldNote.copy(
                 title = title,
-                content = content,
-                updatedAt = java.text.SimpleDateFormat(
+                content = content,  // 直接使用纯内容
+                updatedAt = SimpleDateFormat(
                     "yyyy-MM-dd HH:mm:ss",
-                    java.util.Locale.getDefault()
-                ).format(java.util.Date())
+                    Locale.getDefault()
+                ).format(Date())
             )
 
             notes[noteIndex] = updatedNote

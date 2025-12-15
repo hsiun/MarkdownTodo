@@ -84,6 +84,8 @@ class GitManager(
     }
 
     // 2. 拉取更新（同步）
+// GitManager.kt
+// 在 pullChanges 方法的 onSuccess 回调中添加日志
     fun pullChanges(onSuccess: (PullResult) -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
@@ -103,6 +105,19 @@ class GitManager(
                                     .setRemoteBranchName(branch)
                                     .setCredentialsProvider(getCredentialsProvider())
                                     .call()
+
+                                // 拉取后检查文件状态
+                                Log.d(TAG, "拉取操作完成")
+
+                                // 列出notes目录中的文件
+                                val notesDir = File(repoDir, "notes")
+                                if (notesDir.exists()) {
+                                    val files = notesDir.listFiles()
+                                    Log.d(TAG, "拉取后笔记文件数: ${files?.size ?: 0}")
+                                    files?.forEach { file ->
+                                        Log.d(TAG, "  - ${file.name}, 大小: ${file.length()}")
+                                    }
+                                }
                             }
                         }
 

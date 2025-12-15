@@ -37,6 +37,7 @@ class NoteAdapter(
         return ViewHolder(view)
     }
 
+    // NoteAdapter.kt
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         if (position < 0 || position >= notes.size) {
             Log.e(TAG, "无效的position: $position, 列表大小: ${notes.size}")
@@ -48,12 +49,11 @@ class NoteAdapter(
         // 设置标题
         holder.titleText.text = note.title
 
-        // 设置内容预览（限制长度，移除Markdown标记）
-        val plainContent = removeMarkdown(note.content)
-        val preview = if (plainContent.length > 100) {
-            plainContent.substring(0, 100) + "..."
+        // 设置内容预览（直接使用纯内容，不需要清理）
+        val preview = if (note.content.length > 100) {
+            note.content.substring(0, 100) + "..."
         } else {
-            plainContent
+            note.content
         }
         holder.contentPreviewText.text = preview
 

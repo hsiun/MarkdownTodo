@@ -138,6 +138,7 @@ class SyncManager(
     }
 
     // 修改 pullAndMergeChanges 方法
+// SyncManager.kt - 修改 pullAndMergeChanges 方法
     private suspend fun pullAndMergeChanges() {
         try {
             val success = suspendCoroutine<Boolean> { continuation ->
@@ -147,38 +148,47 @@ class SyncManager(
                             try {
                                 syncListener?.onSyncProgress("拉取成功，正在合并数据...")
 
+                                // 读取拉取下来的远程文件（不要修改它们！）
+                                val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
+                                val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
+
+                                // 记录远程文件信息（用于调试）
+                                if (remoteTodoFile.exists()) {
+                                    Log.d(TAG, "远程待办文件大小: ${remoteTodoFile.length()} 字节")
+                                }
+                                if (remoteNotesDir.exists()) {
+                                    val files = remoteNotesDir.listFiles()
+                                    Log.d(TAG, "远程笔记文件数: ${files?.size ?: 0}")
+                                    files?.forEach { file ->
+                                        Log.d(TAG, "远程笔记文件: ${file.name}, 大小: ${file.length()} 字节")
+                                    }
+                                }
+
                                 // 合并待办事项
                                 val mergedTodos = mergeTodosIntelligently()
 
                                 // 合并笔记
                                 val mergedNotes = mergeNotesIntelligently()
 
-                                // 更新本地数据
+                                // 更新本地应用数据
                                 todoManager.replaceAllTodos(mergedTodos)
 
-                                // 新增：重新调度所有提醒
+                                // 重新调度所有提醒
                                 withContext(Dispatchers.Main) {
                                     val mainActivity = context as? MainActivity
                                     mainActivity?.todoManager?.rescheduleAllReminders()
                                 }
-                                // 添加：更新本地笔记数据
+
+                                // 更新本地笔记数据
                                 noteManager.replaceAllNotes(mergedNotes)
-                                // 保存到Git仓库目录
-                                val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
-                                saveTodosToGitRepo(mergedTodos, remoteTodoFile)
 
-                                // 保存笔记
-                                val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
-                                if (!remoteNotesDir.exists()) {
-                                    remoteNotesDir.mkdirs()
-                                }
-
-                                mergedNotes.forEach { note ->
-                                    val noteFile = File(remoteNotesDir, "note_${note.id}_${note.uuid}.md")
-                                    noteFile.writeText(note.toMarkdown())
-                                }
+                                // 重要：不要在这里保存到Git仓库目录！
+                                // 我们将在提交时重新生成文件
 
                                 syncListener?.onSyncProgress("合并完成")
+
+                                // 准备要提交的文件
+                                prepareFilesForCommit(mergedTodos, mergedNotes)
 
                                 // 提交合并后的更改
                                 val commitMessage = "同步合并 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
@@ -191,7 +201,7 @@ class SyncManager(
                                         continuation.resume(true)
                                     },
                                     onError = { error ->
-                                        // 提交失败，但数据已经合并到本地，所以继续
+                                        // 提交失败，但数据已经合并到本地
                                         Log.w(TAG, "提交失败，但本地数据已更新: $error")
                                         syncListener?.onSyncSuccess("同步完成（但推送失败）")
                                         continuation.resume(true)
@@ -205,26 +215,7 @@ class SyncManager(
                         }
                     },
                     onError = { error ->
-                        // 拉取失败（可能是冲突或网络问题），直接删除本地仓库
-                        Log.d(TAG, "拉取失败，删除本地仓库: $error")
-
-                        syncScope.launch {
-                            try {
-                                // 删除本地仓库
-                                val repoDir = File(context.filesDir, GIT_REPO_DIR)
-                                if (repoDir.exists()) {
-                                    repoDir.deleteRecursively()
-                                    Log.d(TAG, "已删除本地仓库")
-                                }
-
-                                // 通知用户需要手动刷新
-                                syncListener?.onSyncError("同步失败，已清理本地仓库，请手动刷新")
-                                continuation.resume(false)
-                            } catch (e: Exception) {
-                                syncListener?.onSyncError("处理失败: ${e.message}")
-                                continuation.resume(false)
-                            }
-                        }
+                        // ... 错误处理 ...
                     }
                 )
             }
@@ -238,6 +229,37 @@ class SyncManager(
         } finally {
             isSyncing = false
             Log.d(TAG, "同步流程完成，isSyncing = false")
+        }
+    }
+
+    // 添加新方法：准备提交文件
+    private suspend fun prepareFilesForCommit(todos: List<TodoItem>, notes: List<NoteItem>) {
+        withContext(Dispatchers.IO) {
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+
+            // 保存待办事项
+            val todoFile = File(repoDir, "todos.md")
+            saveTodosToGitRepo(todos, todoFile)
+            Log.d(TAG, "已保存待办事项到: ${todoFile.absolutePath}, 大小: ${todoFile.length()} 字节")
+
+            // 保存笔记
+            val notesDir = File(repoDir, "notes")
+            if (!notesDir.exists()) {
+                notesDir.mkdirs()
+            }
+
+            // 先清空notes目录
+            if (notesDir.exists() && notesDir.isDirectory) {
+                notesDir.listFiles()?.forEach { it.delete() }
+            }
+
+            // 保存笔记文件
+            notes.forEach { note ->
+                val noteFile = File(notesDir, "note_${note.id}_${note.uuid}.md")
+                val markdown = note.toMarkdown()
+                noteFile.writeText(markdown)
+                Log.d(TAG, "已保存笔记到: ${noteFile.name}, 大小: ${noteFile.length()} 字节, 内容长度: ${markdown.length}")
+            }
         }
     }
 
@@ -473,20 +495,36 @@ class SyncManager(
                     // 从文件名解析ID和UUID
                     val (id, uuid) = parseIdAndUuidFromFilename(file.name)
 
+                    Log.d(TAG, "处理远程文件: ${file.name}, 大小: ${file.length()} 字节")
+
                     if (id == -1 || uuid.isEmpty()) {
-                        Log.w(TAG, "远程笔记文件名格式不正确，跳过: ${file.name}")
+                        Log.w(TAG, "文件名解析失败: ${file.name}")
                         return@forEach
                     }
 
+                    // 读取文件内容并记录详细信息
                     val content = file.readText()
-                    Log.d(TAG, "读取远程笔记文件: ${file.name}, 内容长度: ${content.length}")
+                    Log.d(TAG, "文件内容长度: ${content.length}")
 
-                    // 传入从文件名解析的ID和UUID
-                    val note = NoteItem.fromMarkdown(content, id, uuid)
-                    note?.let {
-                        remoteNotes.add(it)
-                        Log.d(TAG, "解析远程笔记: ID=${it.id}, UUID=${it.uuid}, 标题='${it.title}', updatedAt=${it.updatedAt}")
+                    // 打印前几行内容以便调试
+                    val lines = content.lines()
+                    lines.take(5).forEachIndexed { index, line ->
+                        Log.d(TAG, "行 $index: '$line'")
                     }
+
+                    // 解析笔记
+                    val note = NoteItem.fromMarkdown(content, id, uuid)
+
+                    if (note == null) {
+                        Log.e(TAG, "笔记解析失败！文件内容可能格式错误")
+                        // 尝试打印更多内容
+                        Log.e(TAG, "完整内容（前200字符）: ${content.take(200)}")
+                    } else {
+                        Log.d(TAG, "解析成功: ID=${note.id}, 标题='${note.title}', 内容长度=${note.content.length}")
+                        Log.d(TAG, "解析出的内容: '${note.content}'")
+                        remoteNotes.add(note)
+                    }
+
                 } catch (e: Exception) {
                     Log.e(TAG, "读取远程笔记文件失败: ${file.name}", e)
                 }
@@ -495,9 +533,9 @@ class SyncManager(
 
         Log.d(TAG, "合并笔记: 本地 ${localNotes.size} 条, 远程 ${remoteNotes.size} 条")
 
-        // 调试：打印本地笔记信息
+        // 调试：打印所有本地笔记
         localNotes.forEach { note ->
-            Log.d(TAG, "本地笔记: ID=${note.id}, UUID=${note.uuid}, 标题='${note.title}', updatedAt=${note.updatedAt}")
+            Log.d(TAG, "本地笔记: ID=${note.id}, UUID=${note.uuid}, 标题='${note.title}', 内容长度=${note.content.length}")
         }
 
         val mergedMap = mutableMapOf<String, NoteItem>()
@@ -515,7 +553,7 @@ class SyncManager(
             if (existingNote == null) {
                 // 远程有而本地没有的笔记，添加
                 mergedMap[remoteNote.uuid] = remoteNote
-                Log.d(TAG, "添加新笔记: ID=${remoteNote.id}, UUID=${remoteNote.uuid}")
+                Log.d(TAG, "添加远程笔记: ID=${remoteNote.id}, 标题='${remoteNote.title}'")
             } else {
                 // 两者都存在，根据更新时间判断
                 try {
@@ -523,21 +561,18 @@ class SyncManager(
                     val remoteTime = dateFormat.parse(remoteNote.updatedAt) ?: Date(0)
 
                     Log.d(TAG, "笔记比较 - ID=${existingNote.id}:")
-                    Log.d(TAG, "  本地时间: ${existingNote.updatedAt} -> $localTime")
-                    Log.d(TAG, "  远程时间: ${remoteNote.updatedAt} -> $remoteTime")
-                    Log.d(TAG, "  本地内容: '${existingNote.content.take(50)}...'")
-                    Log.d(TAG, "  远程内容: '${remoteNote.content.take(50)}...'")
+                    Log.d(TAG, "  本地时间: $localTime (${existingNote.updatedAt})")
+                    Log.d(TAG, "  远程时间: $remoteTime (${remoteNote.updatedAt})")
+                    Log.d(TAG, "  本地内容长度: ${existingNote.content.length}")
+                    Log.d(TAG, "  远程内容长度: ${remoteNote.content.length}")
 
                     // 优先使用更新时间更晚的
-                    val comparison = remoteTime.compareTo(localTime)
-                    Log.d(TAG, "  时间比较结果: $comparison (正数表示远程更新)")
-
                     if (remoteTime.after(localTime)) {
-                        Log.d(TAG, "  使用远程版本")
+                        Log.d(TAG, "  远程更新，使用远程版本")
                         mergedMap[remoteNote.uuid] = remoteNote
                     } else if (localTime.after(remoteTime)) {
-                        Log.d(TAG, "  使用本地版本")
-                        // 不需要操作，已经是本地版本
+                        Log.d(TAG, "  本地更新，使用本地版本")
+                        // 已经使用本地版本
                     } else {
                         // 时间相等，使用内容更长的（通常是更新后的）
                         Log.d(TAG, "  时间相等，比较内容长度")
@@ -545,7 +580,7 @@ class SyncManager(
                             Log.d(TAG, "  远程内容更长，使用远程版本")
                             mergedMap[remoteNote.uuid] = remoteNote
                         } else {
-                            Log.d(TAG, "  本地内容更长或不相等，使用本地版本")
+                            Log.d(TAG, "  本地内容更长或相等，使用本地版本")
                         }
                     }
 

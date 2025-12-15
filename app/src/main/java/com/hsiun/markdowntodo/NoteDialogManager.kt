@@ -61,6 +61,7 @@ class NoteDialogManager(private val context: Context) {
         dialog.show()
     }
 
+    // NoteDialogManager.kt
     fun showEditNoteDialog(note: NoteItem, listener: NoteDialogListener) {
         val dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_note_edit, null)
 
@@ -69,9 +70,9 @@ class NoteDialogManager(private val context: Context) {
         val saveButton = dialogView.findViewById<Button>(R.id.noteSaveButton)
         val cancelButton = dialogView.findViewById<Button>(R.id.noteCancelButton)
 
-        // 填充现有内容
+        // 只填充纯内容，不包含任何格式
         titleEditText.setText(note.title)
-        contentEditText.setText(note.content)
+        contentEditText.setText(note.content)  // 只显示纯内容
 
         // 设置光标位置
         titleEditText.setSelection(note.title.length)
@@ -86,10 +87,10 @@ class NoteDialogManager(private val context: Context) {
 
         saveButton.setOnClickListener {
             val title = titleEditText.text.toString().trim()
-            val content = contentEditText.text.toString().trim()
+            val content = contentEditText.text.toString().trim()  // 纯内容
             val noteId = saveButton.tag as? Int
             if (title.isNotEmpty() && noteId != null) {
-                listener.onUpdateNote(noteId, title, content)
+                listener.onUpdateNote(noteId, title, content)  // 只传递纯内容
                 dialog.dismiss()
             }
         }
