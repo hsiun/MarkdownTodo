@@ -237,6 +237,15 @@ class TodoAdapter(
         }
     }
 
+    // TodoAdapter.kt 中已有的代码保持不变，只需添加这个方法
+    fun getTodoAtPosition(position: Int): TodoItem? {
+        return if (position in 0 until todos.size) {
+            todos[position]
+        } else {
+            null
+        }
+    }
+
     // 然后修改updateFilteredList方法
     private fun updateFilteredList() {
         filteredTodos.clear()

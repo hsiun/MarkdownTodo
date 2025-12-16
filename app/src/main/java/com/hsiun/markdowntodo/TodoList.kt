@@ -172,7 +172,9 @@ class TodoListManager(private val context: Context) {
             return null
         }
 
-        val fileName = generateFileName(name)
+        // 生成唯一的文件名
+        val fileName = generateUniqueFileName(name)
+
         val newList = TodoList(
             name = name,
             fileName = fileName,
@@ -182,8 +184,52 @@ class TodoListManager(private val context: Context) {
         todoLists.add(newList)
         saveTodoLists()
 
-        Log.d(TAG, "创建新列表: $name, 文件: $fileName")
+        // 创建空文件
+        val listFile = File(context.filesDir, fileName)
+        if (!listFile.exists()) {
+            listFile.createNewFile()
+            saveEmptyTodosToFile(listFile)
+        }
+
+        Log.d(TAG, "创建新列表: $name, 文件: $fileName, ID: ${newList.id}")
         return newList
+    }
+
+    // 生成唯一的文件名
+    private fun generateUniqueFileName(listName: String): String {
+        val cleanName = listName.replace("[^a-zA-Z0-9\u4e00-\u9fa5]".toRegex(), "")
+        var baseName = if (cleanName.isNotEmpty()) {
+            "${cleanName}_todos"
+        } else {
+            "todos_${System.currentTimeMillis()}"
+        }
+
+        var fileName = "$baseName.md"
+        var counter = 1
+
+        // 检查文件名是否已存在
+        while (todoLists.any { it.fileName == fileName } || File(context.filesDir, fileName).exists()) {
+            fileName = "${baseName}_${counter}.md"
+            counter++
+        }
+
+        // 如果是默认列表，使用特定的文件名
+        if (listName == "默认待办") {
+            fileName = "todos.md"
+        }
+
+        return fileName
+    }
+
+    // 保存空待办文件
+    private fun saveEmptyTodosToFile(file: File) {
+        try {
+            file.bufferedWriter().use { writer ->
+                writer.write("# 待办事项\n\n")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "创建空待办文件失败", e)
+        }
     }
 
     fun deleteList(listId: String): Boolean {
@@ -258,7 +304,12 @@ class TodoListManager(private val context: Context) {
     private fun generateFileName(listName: String): String {
         // 使用拼音转换或简单的格式化，这里用简单处理
         val cleanName = listName.replace("[^a-zA-Z0-9\u4e00-\u9fa5]".toRegex(), "")
-        return "${cleanName}_todos.md"
+        return if (cleanName.isNotEmpty()) {
+            "${cleanName}_todos.md"
+        } else {
+            // 如果清理后为空，使用默认名称
+            "todos_${System.currentTimeMillis()}.md"
+        }
     }
 
     fun getTodoFileForList(listId: String): File {
@@ -272,5 +323,95 @@ class TodoListManager(private val context: Context) {
 
     fun cleanup() {
         todoLists.clear()
+    }
+
+    // 修改 addExistingList 方法，处理可能的重名情况
+    fun addExistingList(todoList: TodoList): Boolean {
+        try {
+            // 检查是否已存在相同ID的列表
+            if (todoLists.any { it.id == todoList.id }) {
+                Log.w(TAG, "列表已存在: ${todoList.name} (ID: ${todoList.id})")
+                return false
+            }
+
+            // 检查是否已存在相同文件名的列表
+            val existingListWithSameFile = todoLists.find { it.fileName == todoList.fileName }
+            if (existingListWithSameFile != null) {
+                Log.w(TAG, "相同文件名的列表已存在: ${todoList.fileName}，列表名: ${existingListWithSameFile.name}")
+
+                // 如果文件名相同但列表名不同，可能需要合并
+                // 这里我们更新现有列表的名称
+                existingListWithSameFile.name = todoList.name
+                saveTodoLists()
+                Log.d(TAG, "已更新列表名称: ${todoList.name}")
+                return true
+            }
+
+            // 检查是否已存在相同名称的列表（非默认列表）
+            if (todoLists.any { it.name == todoList.name && !it.isDefault && !todoList.isDefault }) {
+                // 名称冲突，添加后缀
+                var newName = "${todoList.name}_副本"
+                var counter = 1
+                while (todoLists.any { it.name == newName && !it.isDefault }) {
+                    newName = "${todoList.name}_副本${counter}"
+                    counter++
+                }
+
+                val renamedList = todoList.copy(name = newName)
+                todoLists.add(renamedList)
+                saveTodoLists()
+                Log.d(TAG, "列表名称冲突，已重命名为: $newName")
+                return true
+            }
+
+            // 创建列表文件（如果不存在）
+            val listFile = File(context.filesDir, todoList.fileName)
+            if (!listFile.exists()) {
+                listFile.createNewFile()
+                saveEmptyTodosToFile(listFile)
+                Log.d(TAG, "已创建列表文件: ${todoList.fileName}")
+            }
+
+            // 添加到列表
+            todoLists.add(todoList)
+            saveTodoLists()
+
+            Log.d(TAG, "已添加现有列表: ${todoList.name}, 文件: ${todoList.fileName}")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "添加现有列表失败", e)
+            return false
+        }
+    }
+
+    // 更新列表的所有信息（不仅仅是名称）
+    fun updateListInfo(listId: String, newName: String, newFileName: String, todoCount: Int, activeCount: Int): Boolean {
+        val list = todoLists.find { it.id == listId } ?: return false
+
+        if (newName.isBlank()) return false
+
+        // 检查是否已存在同名列表（排除自身）
+        if (todoLists.any { it.name == newName && it.id != listId && !it.isDefault }) {
+            return false
+        }
+
+        list.name = newName
+        list.fileName = newFileName
+        list.todoCount = todoCount
+        list.activeCount = activeCount
+
+        saveTodoLists()
+
+        // 如果需要重命名文件
+        if (list.fileName != newFileName && !list.isDefault) {
+            val oldFile = File(context.filesDir, list.fileName)
+            val newFile = File(context.filesDir, newFileName)
+
+            if (oldFile.exists()) {
+                oldFile.renameTo(newFile)
+            }
+        }
+
+        return true
     }
 }

@@ -148,70 +148,115 @@ class SyncManager(
                             try {
                                 syncListener?.onSyncProgress("拉取成功，正在合并数据...")
 
-                                // 读取所有待办列表文件
                                 val repoDir = File(context.filesDir, GIT_REPO_DIR)
-                                val todoListFiles = repoDir.listFiles { file ->
-                                    file.isFile && file.name.endsWith("_todos.md") || file.name == "todos.md"
-                                } ?: emptyArray()
+                                val todoListsDir = File(repoDir, "todo_lists")
 
-                                // 为每个待办列表文件创建或更新列表
-                                todoListFiles.forEach { todoFile ->
-                                    val listName = extractListNameFromFile(todoFile.name)
-                                    // 创建或更新列表记录
-                                    // ...
+                                // 1. 首先确保 todo_lists 目录存在
+                                if (!todoListsDir.exists()) {
+                                    todoListsDir.mkdirs()
+                                    Log.d(TAG, "创建 todo_lists 目录")
                                 }
-                                // 读取拉取下来的远程文件（不要修改它们！）
-                                val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
-                                val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
 
-                                // 记录远程文件信息（用于调试）
-                                if (remoteTodoFile.exists()) {
-                                    Log.d(TAG, "远程待办文件大小: ${remoteTodoFile.length()} 字节")
+                                // 2. 从 todo_lists 目录读取列表元数据或创建列表
+                                val remoteTodoLists = readTodoListsMetadata(repoDir)
+                                Log.d(TAG, "从云端读取到 ${remoteTodoLists.size} 个待办列表")
+
+                                // 获取本地列表
+                                val localLists = todoListManager.getAllLists()
+                                Log.d(TAG, "本地有 ${localLists.size} 个待办列表")
+
+                                // 3. 同步列表结构（合并新增的列表）
+                                if (remoteTodoLists.isNotEmpty()) {
+                                    syncTodoListsStructure(localLists, remoteTodoLists)
+                                } else {
+                                    Log.d(TAG, "云端没有待办列表数据，使用本地列表")
+                                    // 如果云端没有列表，使用本地列表创建元数据并上传
+                                    saveTodoListsMetadata(localLists, repoDir)
                                 }
-                                if (remoteNotesDir.exists()) {
-                                    val files = remoteNotesDir.listFiles()
-                                    Log.d(TAG, "远程笔记文件数: ${files?.size ?: 0}")
-                                    files?.forEach { file ->
-                                        Log.d(TAG, "远程笔记文件: ${file.name}, 大小: ${file.length()} 字节")
+
+                                // 4. 现在获取更新后的本地列表（包含新增的列表）
+                                val updatedLocalLists = todoListManager.getAllLists()
+                                Log.d(TAG, "同步后本地有 ${updatedLocalLists.size} 个待办列表")
+
+                                // 5. 同步每个列表的待办事项（只处理 todo_lists 目录下的文件）
+                                updatedLocalLists.forEach { list ->
+                                    try {
+                                        // 读取远程列表文件（位于 todo_lists 目录）
+                                        val remoteListFile = File(todoListsDir, list.fileName)
+                                        if (remoteListFile.exists()) {
+                                            // 读取远程待办事项
+                                            val remoteTodos = readTodosFromFile(remoteListFile)
+
+                                            // 读取本地待办事项
+                                            val localFile = todoListManager.getTodoFileForList(list.id)
+                                            val localTodos = if (localFile.exists()) {
+                                                readTodosFromFile(localFile)
+                                            } else {
+                                                emptyList()
+                                            }
+
+                                            // 智能合并
+                                            val mergedTodos = mergeTodosIntelligently(localTodos, remoteTodos)
+
+                                            // 保存合并后的待办事项到本地文件
+                                            saveTodosToFile(mergedTodos, localFile)
+
+                                            // 如果这是当前选中的列表，更新内存中的待办事项
+                                            if (list.isSelected) {
+                                                todoManager.replaceAllTodos(mergedTodos)
+                                            }
+
+                                            // 更新列表统计
+                                            val total = mergedTodos.size
+                                            val active = mergedTodos.count { !it.isCompleted }
+                                            todoListManager.updateListCount(list.id, total, active)
+
+                                            Log.d(TAG, "列表同步完成: ${list.name}, 本地 ${localTodos.size} 条, 远程 ${remoteTodos.size} 条, 合并后 ${mergedTodos.size} 条")
+                                        } else {
+                                            Log.w(TAG, "远程列表文件不存在: ${list.fileName}")
+
+                                            // 如果远程文件不存在，可能是新创建的列表还没有同步
+                                            // 使用本地数据
+                                            val localFile = todoListManager.getTodoFileForList(list.id)
+                                            if (localFile.exists()) {
+                                                val localTodos = readTodosFromFile(localFile)
+                                                val total = localTodos.size
+                                                val active = localTodos.count { !it.isCompleted }
+                                                todoListManager.updateListCount(list.id, total, active)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "同步列表失败: ${list.name}", e)
                                     }
                                 }
 
-                                // 合并待办事项
-                                val mergedTodos = mergeTodosIntelligently()
-
-                                // 合并笔记
+                                // 6. 合并笔记
                                 val mergedNotes = mergeNotesIntelligently()
+                                noteManager.replaceAllNotes(mergedNotes)
 
-                                // 更新本地应用数据
-                                todoManager.replaceAllTodos(mergedTodos)
-
-                                // 重新调度所有提醒
+                                // 7. 重新调度所有提醒
                                 withContext(Dispatchers.Main) {
                                     val mainActivity = context as? MainActivity
                                     mainActivity?.todoManager?.rescheduleAllReminders()
                                 }
 
-                                // 更新本地笔记数据
-                                noteManager.replaceAllNotes(mergedNotes)
-
-                                // 准备要提交的文件（包含删除标记）
-                                prepareFilesForCommit(mergedTodos, mergedNotes)
+                                // 8. 准备要提交的文件（包含更新后的列表结构和待办事项）
+                                prepareFilesForCommit(emptyList(), mergedNotes)
 
                                 syncListener?.onSyncProgress("合并完成")
 
-
-                                // 提交合并后的更改
+                                // 9. 提交合并后的更改
                                 val commitMessage = "同步合并 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
 
+                                // 只提交 todo_lists 和 notes 目录
                                 gitManager.commitAndPush(
                                     commitMessage = commitMessage,
-                                    filePatterns = listOf("todos.md", "notes/"),
+                                    filePatterns = listOf("todo_lists/", "notes/"),
                                     onSuccess = {
                                         syncListener?.onSyncSuccess("同步成功")
                                         continuation.resume(true)
                                     },
                                     onError = { error ->
-                                        // 提交失败，但数据已经合并到本地
                                         Log.w(TAG, "提交失败，但本地数据已更新: $error")
                                         syncListener?.onSyncSuccess("同步完成（但推送失败）")
                                         continuation.resume(true)
@@ -225,7 +270,9 @@ class SyncManager(
                         }
                     },
                     onError = { error ->
-                        // ... 错误处理 ...
+                        Log.e(TAG, "拉取失败: $error")
+                        syncListener?.onSyncError("拉取失败: $error")
+                        continuation.resume(false)
                     }
                 )
             }
@@ -241,6 +288,22 @@ class SyncManager(
             Log.d(TAG, "同步流程完成，isSyncing = false")
         }
     }
+
+
+    // 添加保存待办事项到文件的方法
+    private fun saveTodosToFile(todos: List<TodoItem>, file: File) {
+        try {
+            file.bufferedWriter().use { writer ->
+                writer.write("# 待办事项\n\n")
+                todos.forEach { todo ->
+                    writer.write("${todo.toMarkdownLine()}\n")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "保存待办文件失败", e)
+            throw e
+        }
+    }
     private fun extractListNameFromFile(fileName: String): String {
         return when {
             fileName == "todos.md" -> "默认待办"
@@ -248,17 +311,59 @@ class SyncManager(
             else -> fileName.removeSuffix(".md")
         }
     }
-    // 添加新方法：准备提交文件
+
     private suspend fun prepareFilesForCommit(todos: List<TodoItem>, notes: List<NoteItem>) {
         withContext(Dispatchers.IO) {
             val repoDir = File(context.filesDir, GIT_REPO_DIR)
 
-            // 保存待办事项
-            val todoFile = File(repoDir, todoListManager.getCurrentListFileName())
-            saveTodosToGitRepo(todos, todoFile)
-            Log.d(TAG, "已保存待办事项到: ${todoFile.absolutePath}, 大小: ${todoFile.length()} 字节")
+            // 确保 todo_lists 目录存在
+            val todoListsDir = File(repoDir, "todo_lists")
+            if (!todoListsDir.exists()) {
+                todoListsDir.mkdirs()
+            }
 
-            // 保存笔记
+            // 获取所有待办列表
+            val todoLists = todoListManager.getAllLists()
+            Log.d(TAG, "准备保存 ${todoLists.size} 个待办列表到Git仓库")
+
+            // 1. 首先清空 todo_lists 目录（除了 metadata.json）
+            if (todoListsDir.exists() && todoListsDir.isDirectory) {
+                todoListsDir.listFiles()?.forEach { file ->
+                    if (file.name != "metadata.json") {
+                        file.delete()
+                    }
+                }
+            }
+
+            // 2. 保存待办列表元数据
+            saveTodoListsMetadata(todoLists, repoDir)
+
+            // 3. 保存每个列表的待办事项到 todo_lists 目录
+            todoLists.forEach { list ->
+                try {
+                    // 读取该列表的待办事项
+                    val listFile = todoListManager.getTodoFileForList(list.id)
+                    if (listFile.exists()) {
+                        // 读取列表中的待办事项
+                        val listTodos = readTodosFromFile(listFile)
+
+                        // 保存到Git仓库的 todo_lists 目录
+                        val remoteListFile = File(todoListsDir, list.fileName)
+                        saveTodosToGitRepo(listTodos, remoteListFile)
+
+                        Log.d(TAG, "已保存待办列表 '${list.name}' 到: ${remoteListFile.name}, 待办数: ${listTodos.size}")
+                    } else {
+                        Log.w(TAG, "待办列表文件不存在: ${list.name}, 文件: ${list.fileName}")
+                        // 创建空文件
+                        val remoteListFile = File(todoListsDir, list.fileName)
+                        saveTodosToGitRepo(emptyList(), remoteListFile)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存待办列表失败: ${list.name}", e)
+                }
+            }
+
+            // 4. 保存笔记
             val notesDir = File(repoDir, "notes")
             if (!notesDir.exists()) {
                 notesDir.mkdirs()
@@ -271,15 +376,303 @@ class SyncManager(
 
             // 保存笔记文件
             notes.forEach { note ->
-                val noteFile = File(notesDir, "note_${note.id}_${note.uuid}.md")
-                val markdown = note.toMarkdown()
-                noteFile.writeText(markdown)
-                Log.d(TAG, "已保存笔记到: ${noteFile.name}, 大小: ${noteFile.length()} 字节, 内容长度: ${markdown.length}")
+                try {
+                    val noteFile = File(notesDir, "note_${note.id}_${note.uuid}.md")
+                    val markdown = note.toMarkdown()
+                    noteFile.writeText(markdown)
+                    Log.d(TAG, "已保存笔记到: ${noteFile.name}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存笔记失败: ${note.title}", e)
+                }
             }
+
+            Log.d(TAG, "文件准备完成: ${todoLists.size} 个待办列表, ${notes.size} 个笔记")
+        }
+    }
+    // 新增方法：保存待办列表元数据
+    private fun saveTodoListsMetadata(todoLists: List<TodoList>, repoDir: File) {
+        try {
+            val todoListsDir = File(repoDir, "todo_lists")
+            if (!todoListsDir.exists()) {
+                todoListsDir.mkdirs()
+            }
+
+            val metadataFile = File(todoListsDir, "metadata.json")
+            val jsonArray = org.json.JSONArray()
+
+            todoLists.forEach { list ->
+                val jsonObject = org.json.JSONObject().apply {
+                    put("id", list.id)
+                    put("name", list.name)
+                    put("fileName", list.fileName)
+                    put("todoCount", list.todoCount)
+                    put("activeCount", list.activeCount)
+                    put("createdAt", list.createdAt)
+                    put("isDefault", list.isDefault)
+                    put("isSelected", list.isSelected)
+                }
+                jsonArray.put(jsonObject)
+            }
+
+            metadataFile.writeText(jsonArray.toString())
+            Log.d(TAG, "已保存待办列表元数据到: ${metadataFile.absolutePath}, 包含 ${todoLists.size} 个列表")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存待办列表元数据失败", e)
         }
     }
 
+    // 新增方法：从文件名提取列表名称
+    private fun extractListNameFromFileName(fileName: String): String {
+        return when {
+            fileName == "todos.md" -> "默认待办"
+            fileName.endsWith("_todos.md") -> {
+                val baseName = fileName.removeSuffix("_todos.md")
+                if (baseName.isNotEmpty()) {
+                    baseName
+                } else {
+                    "未命名列表"
+                }
+            }
+            fileName.endsWith(".md") -> {
+                val baseName = fileName.removeSuffix(".md")
+                if (baseName.isNotEmpty()) {
+                    baseName
+                } else {
+                    "未命名列表"
+                }
+            }
+            else -> "未命名列表"
+        }
+    }
 
+    // 新增方法：读取待办列表元数据
+    private fun readTodoListsMetadata(repoDir: File): List<TodoList> {
+        return try {
+            val todoListsDir = File(repoDir, "todo_lists")
+
+            // 如果 todo_lists 目录不存在，返回空列表
+            if (!todoListsDir.exists() || !todoListsDir.isDirectory) {
+                Log.w(TAG, "todo_lists 目录不存在")
+                return emptyList()
+            }
+
+            val metadataFile = File(todoListsDir, "metadata.json")
+
+            if (metadataFile.exists()) {
+                // 读取现有的元数据文件
+                val json = metadataFile.readText()
+                val jsonArray = org.json.JSONArray(json)
+                val result = mutableListOf<TodoList>()
+
+                for (i in 0 until jsonArray.length()) {
+                    val jsonObject = jsonArray.getJSONObject(i)
+                    val list = TodoList(
+                        id = jsonObject.getString("id"),
+                        name = jsonObject.getString("name"),
+                        fileName = jsonObject.getString("fileName"),
+                        todoCount = jsonObject.getInt("todoCount"),
+                        activeCount = jsonObject.getInt("activeCount"),
+                        createdAt = jsonObject.getString("createdAt"),
+                        isDefault = jsonObject.getBoolean("isDefault"),
+                        isSelected = jsonObject.getBoolean("isSelected")
+                    )
+                    result.add(list)
+                }
+
+                Log.d(TAG, "从 metadata.json 读取到 ${result.size} 个待办列表元数据")
+                return result
+            } else {
+                // 如果没有元数据文件，扫描目录下的 .md 文件并创建列表
+                Log.w(TAG, "待办列表元数据文件不存在，扫描目录创建列表")
+                return createListsFromFiles(todoListsDir)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "读取待办列表元数据失败", e)
+            emptyList()
+        }
+    }
+
+    // 新增方法：根据文件创建列表
+// 修改 createListsFromFiles 方法，确保不会重复创建默认待办列表
+    private fun createListsFromFiles(todoListsDir: File): List<TodoList> {
+        val result = mutableListOf<TodoList>()
+
+        try {
+            // 扫描 todo_lists 目录下的所有 .md 文件
+            val files = todoListsDir.listFiles { file ->
+                file.isFile && file.name.endsWith(".md") && file.name != "metadata.json"
+            } ?: emptyArray()
+
+            Log.d(TAG, "扫描到 ${files.size} 个待办文件")
+
+            // 首先检查是否有默认待办文件 (todos.md)
+            var hasDefaultTodoFile = false
+
+            files.forEach { file ->
+                if (file.name == "todos.md") {
+                    hasDefaultTodoFile = true
+                }
+            }
+
+            // 如果没有默认待办文件，创建一个空的默认待办文件
+            if (!hasDefaultTodoFile) {
+                Log.d(TAG, "没有找到默认待办文件，创建空的 todos.md")
+                val defaultFile = File(todoListsDir, "todos.md")
+                saveTodosToGitRepo(emptyList(), defaultFile)
+            }
+
+            // 重新扫描文件，现在应该包含 todos.md
+            val allFiles = todoListsDir.listFiles { file ->
+                file.isFile && file.name.endsWith(".md") && file.name != "metadata.json"
+            } ?: emptyArray()
+
+            // 创建列表
+            allFiles.forEachIndexed { index, file ->
+                try {
+                    val fileName = file.name
+
+                    // 跳过重复文件
+                    if (result.any { it.fileName == fileName }) {
+                        Log.d(TAG, "跳过重复文件: $fileName")
+                        return@forEachIndexed
+                    }
+
+                    // 从文件名提取列表名称
+                    val listName = extractListNameFromFileName(fileName)
+
+                    // 检查是否是默认列表
+                    val isDefault = fileName == "todos.md"
+
+                    // 读取待办数量
+                    val todos = readTodosFromFile(file)
+                    val todoCount = todos.size
+                    val activeCount = todos.count { !it.isCompleted }
+
+                    // 创建列表
+                    val list = TodoList(
+                        name = listName,
+                        fileName = fileName,
+                        todoCount = todoCount,
+                        activeCount = activeCount,
+                        isDefault = isDefault,
+                        isSelected = isDefault // 默认列表默认选中
+                    )
+
+                    result.add(list)
+                    Log.d(TAG, "从文件创建列表: ${list.name}, 文件: $fileName, 待办数: $todoCount")
+                } catch (e: Exception) {
+                    Log.e(TAG, "从文件创建列表失败: ${file.name}", e)
+                }
+            }
+
+            // 保存元数据文件，以便下次使用
+            if (result.isNotEmpty()) {
+                saveTodoListsMetadata(result, todoListsDir.parentFile)
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "从文件创建列表失败", e)
+        }
+
+        return result
+    }
+    // 新增方法：同步待办列表结构
+    private fun syncTodoListsStructure(localLists: List<TodoList>, remoteLists: List<TodoList>) {
+        Log.d(TAG, "开始同步待办列表结构，远程 ${remoteLists.size} 个，本地 ${localLists.size} 个")
+
+        // 创建本地列表ID的映射
+        val localListMap = localLists.associateBy { it.id }
+
+        // 处理每个远程列表
+        remoteLists.forEach { remoteList ->
+            val localList = localListMap[remoteList.id]
+
+            if (localList == null) {
+                // 本地没有这个列表，创建它
+                Log.d(TAG, "创建新的待办列表: ${remoteList.name}")
+
+                // 使用TodoListManager的addExistingList方法
+                val success = todoListManager.addExistingList(remoteList)
+                if (success) {
+                    Log.d(TAG, "已添加待办列表: ${remoteList.name}")
+                } else {
+                    Log.w(TAG, "添加待办列表失败: ${remoteList.name}")
+                }
+            } else {
+                // 本地已有这个列表，更新信息
+                Log.d(TAG, "更新现有列表: ${remoteList.name}")
+
+                // 使用TodoListManager的updateListInfo方法
+                todoListManager.updateListInfo(
+                    localList.id,
+                    remoteList.name,
+                    remoteList.fileName,
+                    remoteList.todoCount,
+                    remoteList.activeCount
+                )
+            }
+        }
+
+        Log.d(TAG, "待办列表结构同步完成")
+    }
+
+    // 新增方法：添加列表到本地（需要TodoListManager支持）
+    private fun addListToLocal(todoList: TodoList) {
+        // 由于TodoListManager没有直接添加现有列表的方法，我们需要手动处理
+        // 这里直接写入到todo_lists.json文件中
+
+        try {
+            val todoListsFile = File(context.filesDir, "todo_lists.json")
+            val existingLists = mutableListOf<TodoList>()
+
+            // 读取现有列表
+            if (todoListsFile.exists()) {
+                val json = todoListsFile.readText()
+                val jsonArray = org.json.JSONArray(json)
+
+                for (i in 0 until jsonArray.length()) {
+                    val jsonObject = jsonArray.getJSONObject(i)
+                    val list = TodoList(
+                        id = jsonObject.getString("id"),
+                        name = jsonObject.getString("name"),
+                        fileName = jsonObject.getString("fileName"),
+                        todoCount = jsonObject.getInt("todoCount"),
+                        activeCount = jsonObject.getInt("activeCount"),
+                        createdAt = jsonObject.getString("createdAt"),
+                        isDefault = jsonObject.getBoolean("isDefault"),
+                        isSelected = jsonObject.getBoolean("isSelected")
+                    )
+                    existingLists.add(list)
+                }
+            }
+
+            // 添加新列表
+            existingLists.add(todoList)
+
+            // 保存回文件
+            val jsonArray = org.json.JSONArray()
+            existingLists.forEach { list ->
+                val jsonObject = org.json.JSONObject().apply {
+                    put("id", list.id)
+                    put("name", list.name)
+                    put("fileName", list.fileName)
+                    put("todoCount", list.todoCount)
+                    put("activeCount", list.activeCount)
+                    put("createdAt", list.createdAt)
+                    put("isDefault", list.isDefault)
+                    put("isSelected", list.isSelected)
+                }
+                jsonArray.put(jsonObject)
+            }
+
+            todoListsFile.writeText(jsonArray.toString())
+
+            Log.d(TAG, "已添加列表到本地: ${todoList.name}")
+        } catch (e: Exception) {
+            Log.e(TAG, "添加列表到本地失败", e)
+        }
+    }
+    // 修改 autoPushTodo 方法，提交 todo_lists 目录
     fun autoPushTodo(operation: String, todo: TodoItem? = null) {
         if (!::gitManager.isInitialized) {
             return
@@ -294,12 +687,12 @@ class SyncManager(
 
         syncScope.launch {
             try {
-                // 将本地待办事项文件复制到Git仓库目录
-                val remoteTodoFile = File(repoDir, "todos.md")
-                saveTodosToGitRepo(todoManager.getAllTodos(), remoteTodoFile)
+                // 准备要提交的文件
+                prepareFilesForCommit(emptyList(), noteManager.getAllNotes())
 
                 gitManager.commitAndPush(
                     commitMessage = "$operation 待办事项 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}",
+                    filePatterns = listOf("todo_lists/"),
                     onSuccess = {
                         CoroutineScope(Dispatchers.Main).launch {
                             syncListener?.onSyncStatusChanged("推送成功")
@@ -320,16 +713,7 @@ class SyncManager(
         }
     }
 
-    private fun mergeTodosIntelligently(): List<TodoItem> {
-        val localTodos = todoManager.getAllTodos()
-        val remoteFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
-
-        val remoteTodos = if (remoteFile.exists()) {
-            readTodosFromFile(remoteFile)
-        } else {
-            emptyList()
-        }
-
+    private fun mergeTodosIntelligently(localTodos: List<TodoItem>, remoteTodos: List<TodoItem>): List<TodoItem> {
         val mergedMap = mutableMapOf<String, TodoItem>()
 
         // 先添加远程的所有项目，远程优先

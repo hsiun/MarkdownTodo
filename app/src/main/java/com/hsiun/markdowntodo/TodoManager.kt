@@ -418,12 +418,8 @@ class TodoManager(private val context: Context) {
     }
     // 添加切换列表的方法
     fun switchTodoList(listId: String): Boolean {
-        // 取消当前列表的所有提醒
-        todos.forEach { todo ->
-            if (todo.remindTime > 0 || todo.nextRemindTime > 0) {
-                ReminderScheduler.cancelReminder(context, todo)
-            }
-        }
+        // 保存当前列表的状态
+        saveLocalTodos()
 
         // 切换列表
         if (todoListManager.setCurrentList(listId)) {
@@ -431,6 +427,8 @@ class TodoManager(private val context: Context) {
             todos.clear()
             todoFile = todoListManager.getTodoFileForCurrentList()
             loadLocalTodos()
+
+            Log.d(TAG, "切换到列表: ${todoListManager.getCurrentListName()}, 文件: ${todoFile.name}")
             return true
         }
         return false
