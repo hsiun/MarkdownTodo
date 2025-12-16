@@ -104,7 +104,7 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
         }
     }
 
-    private fun loadTodos() {
+    fun loadTodos() {
         val mainActivity = activity as? MainActivity ?: return
 
         Log.d(TAG, "开始加载待办事项...")

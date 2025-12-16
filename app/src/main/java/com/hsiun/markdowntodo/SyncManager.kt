@@ -16,6 +16,7 @@ class SyncManager(
     private val context: Context,
     private val todoManager: TodoManager,
     private val noteManager: NoteManager, // 添加笔记管理器
+    private val todoListManager: TodoListManager,
 
     private val sharedPreferences: SharedPreferences
 ) {
@@ -138,7 +139,6 @@ class SyncManager(
         )
     }
 
-    // 修改 pullAndMergeChanges 方法
     private suspend fun pullAndMergeChanges() {
         try {
             val success = suspendCoroutine<Boolean> { continuation ->
@@ -148,6 +148,18 @@ class SyncManager(
                             try {
                                 syncListener?.onSyncProgress("拉取成功，正在合并数据...")
 
+                                // 读取所有待办列表文件
+                                val repoDir = File(context.filesDir, GIT_REPO_DIR)
+                                val todoListFiles = repoDir.listFiles { file ->
+                                    file.isFile && file.name.endsWith("_todos.md") || file.name == "todos.md"
+                                } ?: emptyArray()
+
+                                // 为每个待办列表文件创建或更新列表
+                                todoListFiles.forEach { todoFile ->
+                                    val listName = extractListNameFromFile(todoFile.name)
+                                    // 创建或更新列表记录
+                                    // ...
+                                }
                                 // 读取拉取下来的远程文件（不要修改它们！）
                                 val remoteTodoFile = File(context.filesDir, "$GIT_REPO_DIR/todos.md")
                                 val remoteNotesDir = File(context.filesDir, "$GIT_REPO_DIR/notes")
@@ -229,14 +241,20 @@ class SyncManager(
             Log.d(TAG, "同步流程完成，isSyncing = false")
         }
     }
-
+    private fun extractListNameFromFile(fileName: String): String {
+        return when {
+            fileName == "todos.md" -> "默认待办"
+            fileName.endsWith("_todos.md") -> fileName.removeSuffix("_todos.md")
+            else -> fileName.removeSuffix(".md")
+        }
+    }
     // 添加新方法：准备提交文件
     private suspend fun prepareFilesForCommit(todos: List<TodoItem>, notes: List<NoteItem>) {
         withContext(Dispatchers.IO) {
             val repoDir = File(context.filesDir, GIT_REPO_DIR)
 
             // 保存待办事项
-            val todoFile = File(repoDir, "todos.md")
+            val todoFile = File(repoDir, todoListManager.getCurrentListFileName())
             saveTodosToGitRepo(todos, todoFile)
             Log.d(TAG, "已保存待办事项到: ${todoFile.absolutePath}, 大小: ${todoFile.length()} 字节")
 

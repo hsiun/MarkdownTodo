@@ -40,4 +40,7 @@
     <color name="reminder_overdue">#F44336</color>
     <color name="reminder_done">#4CAF50</color>
 
+    <color name="selected_text">#865EDC</color>
+    <color name="selected_background">#E8E0F7</color>
+
 </resources>

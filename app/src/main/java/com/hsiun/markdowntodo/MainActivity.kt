@@ -23,6 +23,11 @@ import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.util.Log
 import android.view.Gravity
+import android.view.View
+import android.widget.AdapterView
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 
@@ -33,7 +38,8 @@ class MainActivity : AppCompatActivity(),
     TodoDialogManager.TodoDialogListener,
     NoteDialogManager.NoteDialogListener,
     SettingsManager.SettingsChangeListener,
-    SettingsDialogManager.SettingsDialogListener {
+    SettingsDialogManager.SettingsDialogListener,
+    CreateTodoListDialog.CreateTodoListListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var sharedPreferences: SharedPreferences
@@ -46,7 +52,8 @@ class MainActivity : AppCompatActivity(),
     lateinit var syncManager: SyncManager
     lateinit var settingsManager: SettingsManager
     lateinit var settingsDialogManager: SettingsDialogManager
-
+    private lateinit var todoListManager: TodoListManager
+    private lateinit var todoListSpinnerAdapter: TodoListSpinnerAdapter
     // 页面适配器
     private lateinit var mainPagerAdapter: MainPagerAdapter
 
@@ -83,6 +90,12 @@ class MainActivity : AppCompatActivity(),
 
         // 初始化所有管理器
         initManagers()
+
+        // 初始隐藏笔记标题，显示Spinner（默认是待办页面）
+        binding.notesTitleText.visibility = View.GONE
+        binding.todoListSpinner.visibility = View.VISIBLE
+
+        setupTodoListSpinner()
 
         // 设置TodoDialogManager的FragmentManager
         todoDialogManager.setFragmentManager(supportFragmentManager)
@@ -127,10 +140,12 @@ class MainActivity : AppCompatActivity(),
         settingsManager = SettingsManager(this)
         settingsManager.addSettingsChangeListener(this)
 
+        todoListManager = TodoListManager(this)
+
         // 初始化TodoManager
         todoManager = TodoManager(this)
         todoManager.setTodoChangeListener(this)
-        todoManager.init()
+        todoManager.init(todoListManager)
 
         // 初始化NoteManager
         noteManager = NoteManager(this)
@@ -145,7 +160,7 @@ class MainActivity : AppCompatActivity(),
         settingsDialogManager.setSettingsDialogListener(this)
 
         // 初始化SyncManager - 将 sharedPreferences 作为参数传递
-        syncManager = SyncManager(this, todoManager, noteManager, sharedPreferences)
+        syncManager = SyncManager(this, todoManager, noteManager, todoListManager, sharedPreferences)
         syncManager.setSyncListener(this)
 
         // 配置GitManager（如果已配置）
@@ -195,6 +210,7 @@ class MainActivity : AppCompatActivity(),
             override fun onPageSelected(position: Int) {
                 currentPage = position
                 updateFabAction(position)
+                // 根据页面显示不同的内容
                 updatePageTitle(position)
 
                 // 手动更新Tab文字颜色
@@ -204,6 +220,12 @@ class MainActivity : AppCompatActivity(),
                     tabView?.isSelected = (i == position)
                 }
             }
+            override fun onPageScrollStateChanged(state: Int) {
+                // 在页面滚动状态变化时也更新标题，确保及时性
+                if (state == ViewPager2.SCROLL_STATE_IDLE) {
+                    updatePageTitle(binding.viewPager.currentItem)
+                }
+            }
         })
 
         // 初始化第一个Tab为选中状态
@@ -211,20 +233,36 @@ class MainActivity : AppCompatActivity(),
         val firstTabView = firstTab?.customView as? TextView
         firstTabView?.isSelected = true
     }
-
-    private fun updatePageTitle(position: Int) {
-        when (position) {
+    // 添加辅助方法：确保页面标题视图状态正确
+    private fun ensurePageTitleConsistency() {
+        when (currentPage) {
             0 -> {
-                val activeCount = todoManager.getActiveTodosCount()
-                val totalCount = todoManager.getAllTodos().size
-                binding.todoCountText.text = "待办: $activeCount/$totalCount"
-                binding.todoCountText.setTextColor(Color.parseColor("#333333"))
+                if (binding.todoListSpinner.visibility != View.VISIBLE) {
+                    binding.todoListSpinner.visibility = View.VISIBLE
+                }
+                if (binding.notesTitleText.visibility != View.GONE) {
+                    binding.notesTitleText.visibility = View.GONE
+                }
             }
             1 -> {
-                val noteCount = noteManager.getAllNotes().size
-                binding.todoCountText.text = "笔记: $noteCount"
-                binding.todoCountText.setTextColor(Color.parseColor("#333333"))
+                if (binding.todoListSpinner.visibility != View.GONE) {
+                    binding.todoListSpinner.visibility = View.GONE
+                }
+                if (binding.notesTitleText.visibility != View.VISIBLE) {
+                    binding.notesTitleText.visibility = View.VISIBLE
+                    updateNotesTitle()
+                }
             }
+        }
+    }
+    private fun refreshSpinner() {
+        todoListSpinnerAdapter = TodoListSpinnerAdapter(this, todoListManager.getAllLists())
+        val spinner = binding.todoListSpinner
+        spinner.adapter = todoListSpinnerAdapter
+
+        val currentListIndex = todoListManager.getAllLists().indexOfFirst { it.isSelected }
+        if (currentListIndex != -1) {
+            spinner.setSelection(currentListIndex)
         }
     }
 
@@ -287,6 +325,12 @@ class MainActivity : AppCompatActivity(),
 
     override fun onCancel() {
         // 对话框取消，不需要特殊处理
+        // 重置Spinner选择
+        val spinner = binding.todoListSpinner
+        val currentListIndex = todoListManager.getAllLists().indexOfFirst { it.isSelected }
+        if (currentListIndex != -1) {
+            spinner.setSelection(currentListIndex)
+        }
     }
 
     // NoteDialogManager.NoteDialogListener 实现
@@ -346,26 +390,34 @@ class MainActivity : AppCompatActivity(),
     // NoteManager.NoteChangeListener 实现
     override fun onNotesChanged(notes: List<NoteItem>) {
         runOnUiThread {
-            updatePageCounts()
+            if (currentPage == 1) { // 只有在笔记页面才更新
+                updateNotesTitle()
+            }
         }
     }
 
     override fun onNoteAdded(note: NoteItem) {
         runOnUiThread {
-            updatePageCounts()
+            if (currentPage == 1) {
+                updateNotesTitle()
+            }
         }
     }
 
     override fun onNoteUpdated(note: NoteItem) {
         runOnUiThread {
-            updatePageCounts()
+            if (currentPage == 1) {
+                updateNotesTitle()
+            }
         }
     }
 
     override fun onNoteDeleted(note: NoteItem) {
         runOnUiThread {
-            updatePageCounts()
-            Toast.makeText(this, "已删除笔记", Toast.LENGTH_SHORT).show()
+            if (currentPage == 1) {
+                updateNotesTitle()
+                Toast.makeText(this, "已删除笔记", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -409,17 +461,47 @@ class MainActivity : AppCompatActivity(),
             }
         }
     }
-
+    // 新增方法：根据页面更新顶部标题
+    private fun updatePageTitle(position: Int) {
+        when (position) {
+            0 -> {
+                // 待办页面 - 显示Spinner和待办列表
+                binding.todoListSpinner.visibility = View.VISIBLE
+                binding.notesTitleText.visibility = View.GONE
+                // 刷新Spinner数据
+                refreshSpinner()
+            }
+            1 -> {
+                // 笔记页面 - 显示笔记标题
+                binding.todoListSpinner.visibility = View.GONE
+                binding.notesTitleText.visibility = View.VISIBLE
+                updateNotesTitle() // 更新笔记标题
+            }
+        }
+    }
+    // 新增方法：更新笔记标题
+    private fun updateNotesTitle() {
+        val noteCount = noteManager.getAllNotes().size
+        binding.notesTitleText.text = "默认笔记 ($noteCount) 条"
+    }
     private fun updatePageCounts() {
         when (currentPage) {
             0 -> {
                 val activeCount = todoManager.getActiveTodosCount()
                 val totalCount = todoManager.getAllTodos().size
-                binding.todoCountText.text = "$activeCount/$totalCount 条待办"
+                // 更新当前列表的统计信息
+                val currentListId = todoListManager.getCurrentListId()
+                todoListManager.updateListCount(currentListId, totalCount, activeCount)
+                refreshSpinner()
+
+                // 确保视图状态正确
+                ensurePageTitleConsistency()
             }
             1 -> {
-                val noteCount = noteManager.getAllNotes().size
-                binding.todoCountText.text = "$noteCount 条笔记"
+                // 笔记页面 - 更新笔记标题
+                updateNotesTitle()
+                // 确保视图状态正确
+                ensurePageTitleConsistency()
             }
         }
     }
@@ -669,6 +751,9 @@ class MainActivity : AppCompatActivity(),
 
         // 新增：每次回到应用时检查提醒
         todoManager.checkAndTriggerReminders()
+
+        // 确保页面标题视图状态正确
+        ensurePageTitleConsistency()
     }
 
     override fun onPause() {
@@ -682,4 +767,119 @@ class MainActivity : AppCompatActivity(),
         settingsManager.cleanup()
         instance = null
     }
+    private fun setupTodoListSpinner() {
+        // 移除原来的 todoCountText，改用 Spinner
+        val spinner = binding.todoListSpinner
+
+        // 创建适配器
+        todoListSpinnerAdapter = TodoListSpinnerAdapter(this, todoListManager.getAllLists())
+        spinner.adapter = todoListSpinnerAdapter
+
+        // 设置选中项
+        val currentListIndex = todoListManager.getAllLists().indexOfFirst { it.isSelected }
+        if (currentListIndex != -1) {
+            spinner.setSelection(currentListIndex)
+        }
+
+        // 设置选择监听器
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (todoListSpinnerAdapter.isNewItem(position)) {
+                    // 显示新建列表对话框
+                    showCreateTodoListDialog()
+                } else {
+                    val selectedList = todoListSpinnerAdapter.getItem(position)
+                    selectedList?.let { list ->
+                        if (!list.isSelected) {
+                            // 切换列表
+                            switchTodoList(list.id)
+                        }
+                    }
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                // 不做任何操作
+            }
+        }
+    }
+    private fun switchTodoList(listId: String) {
+        if (todoManager.switchTodoList(listId)) {
+            // 更新UI
+            updatePageCounts()
+            refreshSpinner()
+
+            // 刷新待办列表显示
+            val todoFragment = supportFragmentManager.findFragmentByTag("todo_fragment") as? TodoFragment
+            todoFragment?.loadTodos()
+
+            Toast.makeText(this, "已切换到 ${todoListManager.getCurrentListName()}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showCreateTodoListDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("新建待办列表")
+
+        val input = EditText(this)
+        input.hint = "请输入列表名称"
+
+        // 简单的样式设置
+        input.setTextColor(Color.BLACK)
+        input.textSize = 16f
+        input.setHintTextColor(Color.GRAY)
+
+        // 添加边距
+        val layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        layoutParams.setMargins(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
+        input.layoutParams = layoutParams
+
+        // 设置背景
+        input.setBackgroundColor(Color.WHITE)
+        input.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.addView(input)
+
+        builder.setView(container)
+
+        builder.setPositiveButton("创建") { dialog, which ->
+            val name = input.text.toString().trim()
+            if (name.isNotEmpty()) {
+                onTodoListCreated(name)
+            } else {
+                Toast.makeText(this, "列表名称不能为空", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        builder.setNegativeButton("取消") { dialog, which ->
+            dialog.cancel()
+        }
+
+        val dialog = builder.create()
+        dialog.show()
+
+        // 设置按钮颜色
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(Color.parseColor("#865EDC"))
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(Color.GRAY)
+    }
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+    override fun onTodoListCreated(name: String) {
+        val newList = todoListManager.createList(name)
+        if (newList != null) {
+            // 切换到新列表
+            switchTodoList(newList.id)
+            Toast.makeText(this, "已创建列表: $name", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "创建失败，可能已存在同名列表", Toast.LENGTH_SHORT).show()
+        }
+        refreshSpinner()
+    }
+
 }
