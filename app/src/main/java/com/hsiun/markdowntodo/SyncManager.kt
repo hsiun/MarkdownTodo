@@ -18,14 +18,12 @@ class SyncManager(
     private val noteManager: NoteManager, // 添加笔记管理器
     private val todoListManager: TodoListManager,
 
-    private val sharedPreferences: SharedPreferences
 ) {
 
     companion object {
         private const val TAG = "SyncManager"
         private const val SYNC_COOLDOWN = 5000L
         private const val GIT_REPO_DIR = "git_repo"
-        private const val SYNC_TIMEOUT = 30000L // 30秒超时
     }
 
     private var isSyncing = false
@@ -616,62 +614,6 @@ class SyncManager(
         Log.d(TAG, "待办列表结构同步完成")
     }
 
-    // 新增方法：添加列表到本地（需要TodoListManager支持）
-    private fun addListToLocal(todoList: TodoList) {
-        // 由于TodoListManager没有直接添加现有列表的方法，我们需要手动处理
-        // 这里直接写入到todo_lists.json文件中
-
-        try {
-            val todoListsFile = File(context.filesDir, "todo_lists.json")
-            val existingLists = mutableListOf<TodoList>()
-
-            // 读取现有列表
-            if (todoListsFile.exists()) {
-                val json = todoListsFile.readText()
-                val jsonArray = org.json.JSONArray(json)
-
-                for (i in 0 until jsonArray.length()) {
-                    val jsonObject = jsonArray.getJSONObject(i)
-                    val list = TodoList(
-                        id = jsonObject.getString("id"),
-                        name = jsonObject.getString("name"),
-                        fileName = jsonObject.getString("fileName"),
-                        todoCount = jsonObject.getInt("todoCount"),
-                        activeCount = jsonObject.getInt("activeCount"),
-                        createdAt = jsonObject.getString("createdAt"),
-                        isDefault = jsonObject.getBoolean("isDefault"),
-                        isSelected = jsonObject.getBoolean("isSelected")
-                    )
-                    existingLists.add(list)
-                }
-            }
-
-            // 添加新列表
-            existingLists.add(todoList)
-
-            // 保存回文件
-            val jsonArray = org.json.JSONArray()
-            existingLists.forEach { list ->
-                val jsonObject = org.json.JSONObject().apply {
-                    put("id", list.id)
-                    put("name", list.name)
-                    put("fileName", list.fileName)
-                    put("todoCount", list.todoCount)
-                    put("activeCount", list.activeCount)
-                    put("createdAt", list.createdAt)
-                    put("isDefault", list.isDefault)
-                    put("isSelected", list.isSelected)
-                }
-                jsonArray.put(jsonObject)
-            }
-
-            todoListsFile.writeText(jsonArray.toString())
-
-            Log.d(TAG, "已添加列表到本地: ${todoList.name}")
-        } catch (e: Exception) {
-            Log.e(TAG, "添加列表到本地失败", e)
-        }
-    }
     // 修改 autoPushTodo 方法，提交 todo_lists 目录
     fun autoPushTodo(operation: String, todo: TodoItem? = null) {
         if (!::gitManager.isInitialized) {
@@ -900,35 +842,11 @@ class SyncManager(
                     // 从文件名解析ID和UUID
                     val (id, uuid) = parseIdAndUuidFromFilename(file.name)
 
-                    Log.d(TAG, "处理远程文件: ${file.name}, 大小: ${file.length()} 字节")
-
                     if (id == -1 || uuid.isEmpty()) {
                         Log.w(TAG, "文件名解析失败: ${file.name}")
                         return@forEach
                     }
 
-                    // 读取文件内容并记录详细信息
-                    val content = file.readText()
-                    Log.d(TAG, "文件内容长度: ${content.length}")
-
-                    // 打印前几行内容以便调试
-                    val lines = content.lines()
-                    lines.take(5).forEachIndexed { index, line ->
-                        Log.d(TAG, "行 $index: '$line'")
-                    }
-
-                    // 解析笔记
-                    val note = NoteItem.fromMarkdown(content, id, uuid)
-
-                    if (note == null) {
-                        Log.e(TAG, "笔记解析失败！文件内容可能格式错误")
-                        // 尝试打印更多内容
-                        Log.e(TAG, "完整内容（前200字符）: ${content.take(200)}")
-                    } else {
-                        Log.d(TAG, "解析成功: ID=${note.id}, 标题='${note.title}', 内容长度=${note.content.length}")
-                        Log.d(TAG, "解析出的内容: '${note.content}'")
-                        remoteNotes.add(note)
-                    }
 
                 } catch (e: Exception) {
                     Log.e(TAG, "读取远程笔记文件失败: ${file.name}", e)
@@ -936,12 +854,7 @@ class SyncManager(
             }
         }
 
-        Log.d(TAG, "合并笔记: 本地 ${localNotes.size} 条, 远程 ${remoteNotes.size} 条")
 
-        // 调试：打印所有本地笔记
-        localNotes.forEach { note ->
-            Log.d(TAG, "本地笔记: ID=${note.id}, UUID=${note.uuid}, 标题='${note.title}', 内容长度=${note.content.length}")
-        }
 
         val mergedMap = mutableMapOf<String, NoteItem>()
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -965,22 +878,14 @@ class SyncManager(
                     val localTime = dateFormat.parse(existingNote.updatedAt) ?: Date(0)
                     val remoteTime = dateFormat.parse(remoteNote.updatedAt) ?: Date(0)
 
-                    Log.d(TAG, "笔记比较 - ID=${existingNote.id}:")
-                    Log.d(TAG, "  本地时间: $localTime (${existingNote.updatedAt})")
-                    Log.d(TAG, "  远程时间: $remoteTime (${remoteNote.updatedAt})")
-                    Log.d(TAG, "  本地内容长度: ${existingNote.content.length}")
-                    Log.d(TAG, "  远程内容长度: ${remoteNote.content.length}")
 
                     // 优先使用更新时间更晚的
                     if (remoteTime.after(localTime)) {
-                        Log.d(TAG, "  远程更新，使用远程版本")
                         mergedMap[remoteNote.uuid] = remoteNote
                     } else if (localTime.after(remoteTime)) {
-                        Log.d(TAG, "  本地更新，使用本地版本")
                         // 已经使用本地版本
                     } else {
                         // 时间相等，使用内容更长的（通常是更新后的）
-                        Log.d(TAG, "  时间相等，比较内容长度")
                         if (remoteNote.content.length > existingNote.content.length) {
                             Log.d(TAG, "  远程内容更长，使用远程版本")
                             mergedMap[remoteNote.uuid] = remoteNote

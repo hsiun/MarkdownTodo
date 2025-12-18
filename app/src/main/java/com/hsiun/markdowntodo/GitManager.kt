@@ -84,8 +84,6 @@ class GitManager(
     }
 
     // 2. 拉取更新（同步）
-// GitManager.kt
-// 在 pullChanges 方法的 onSuccess 回调中添加日志
     fun pullChanges(onSuccess: (PullResult) -> Unit, onError: (String) -> Unit) {
         coroutineScope.launch {
             try {
