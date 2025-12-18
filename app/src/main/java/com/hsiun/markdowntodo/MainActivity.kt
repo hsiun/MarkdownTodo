@@ -17,7 +17,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
-import kotlinx.coroutines.*
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Typeface
@@ -27,9 +26,7 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity(),
     TodoManager.TodoChangeListener,
@@ -39,7 +36,7 @@ class MainActivity : AppCompatActivity(),
     NoteDialogManager.NoteDialogListener,
     SettingsManager.SettingsChangeListener,
     SettingsDialogManager.SettingsDialogListener,
-    CreateTodoListDialog.CreateTodoListListener {
+    TodoListDialog.CreateTodoListListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var sharedPreferences: SharedPreferences

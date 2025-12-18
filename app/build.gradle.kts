@@ -53,7 +53,6 @@ dependencies {
 
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    //implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r") // 小米稳定
     implementation ("org.eclipse.jgit:org.eclipse.jgit:5.13.0.202109080827-r") // 都稳定
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.viewpager:viewpager:1.0.0")

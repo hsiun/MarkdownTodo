@@ -6,12 +6,11 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import androidx.fragment.app.DialogFragment
 
-class CreateTodoListDialog : DialogFragment() {
+class TodoListDialog : DialogFragment() {
 
     interface CreateTodoListListener {
         fun onTodoListCreated(name: String)
