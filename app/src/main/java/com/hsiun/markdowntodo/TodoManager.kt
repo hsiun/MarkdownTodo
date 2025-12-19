@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class TodoManager(private val context: Context) {
 
@@ -134,7 +137,8 @@ class TodoManager(private val context: Context) {
                 remindTime = if (setReminder) remindTime else -1L,
                 repeatType = repeatType,
                 originalRemindTime = if (setReminder) remindTime else -1L,
-                nextRemindTime = if (setReminder && repeatType != RepeatType.NONE.value) remindTime else -1L
+                nextRemindTime = if (setReminder && repeatType != RepeatType.NONE.value) remindTime else -1L,
+                updatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
             )
 
             Log.d(TAG, "添加待办事项: ID=$newId, 标题='$title', 提醒时间=${if (setReminder) remindTime else "未设置"}, 重复类型=${RepeatType.fromValue(repeatType).displayName}")
@@ -293,7 +297,6 @@ class TodoManager(private val context: Context) {
         }
     }
 
-    // 其他方法保持不变...
     fun handleRepeatedReminder(todoId: Int) {
         val todoIndex = todos.indexOfFirst { it.id == todoId }
         if (todoIndex == -1) return
@@ -338,7 +341,6 @@ class TodoManager(private val context: Context) {
     }
 
     fun checkAndTriggerReminders() {
-        val now = System.currentTimeMillis()
         val todosToRemind = todos.filter {
             it.shouldRemind()
         }
@@ -385,6 +387,9 @@ class TodoManager(private val context: Context) {
 
         todoChangeListener?.onTodosChanged(newTodos)
         Log.d(TAG, "已替换所有待办: ${todos.size} 条，已重新调度提醒")
+
+        // 重要：确保UI正确更新
+        loadCurrentListTodos()  // 重新加载以确保数据一致
     }
 
     fun getActiveTodosCount(): Int {
@@ -442,6 +447,69 @@ class TodoManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "保存文件失败", e)
             throw e
+        }
+    }
+
+    /**
+     * 确保待办事项列表状态一致（用于调试和修复）
+     */
+    fun ensureTodoConsistency() {
+        Log.d(TAG, "检查待办一致性: 共 ${todos.size} 条待办")
+
+        // 检查重复ID
+        val idSet = mutableSetOf<Int>()
+        val duplicateIds = mutableListOf<Int>()
+
+        todos.forEach { todo ->
+            if (idSet.contains(todo.id)) {
+                duplicateIds.add(todo.id)
+                Log.w(TAG, "发现重复ID: ${todo.id}")
+            } else {
+                idSet.add(todo.id)
+            }
+        }
+
+        if (duplicateIds.isNotEmpty()) {
+            Log.e(TAG, "发现 ${duplicateIds.size} 个重复ID，尝试修复")
+            // 移除重复项，保留最新的（基于updatedAt）
+            val uniqueTodos = mutableListOf<TodoItem>()
+            val groupedByUuid = todos.groupBy { it.uuid }
+
+            groupedByUuid.forEach { (uuid, todoList) ->
+                if (todoList.size > 1) {
+                    Log.w(TAG, "UUID $uuid 有 ${todoList.size} 个重复项")
+                    // 选择更新时间最新的
+                    val latestTodo = todoList.maxByOrNull { parseTodoUpdateTime(it) }
+                    latestTodo?.let { uniqueTodos.add(it) }
+                } else {
+                    uniqueTodos.add(todoList.first())
+                }
+            }
+
+            if (uniqueTodos.size != todos.size) {
+                Log.d(TAG, "修复重复项: 从 ${todos.size} 修复到 ${uniqueTodos.size}")
+                todos.clear()
+                todos.addAll(uniqueTodos)
+                saveCurrentListTodos()
+            }
+        }
+
+        // 统计状态
+        val activeCount = todos.count { !it.isCompleted }
+        val completedCount = todos.count { it.isCompleted }
+        Log.d(TAG, "待办统计: 未完成 $activeCount 条, 已完成 $completedCount 条")
+    }
+
+    /**
+     * 解析待办更新时间
+     */
+    private fun parseTodoUpdateTime(todo: TodoItem): Long {
+        return try {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            dateFormat.parse(todo.updatedAt)?.time ?: 0L
+        } catch (e: Exception) {
+            Log.e(TAG, "解析更新时间失败: ${todo.updatedAt}", e)
+            0L
         }
     }
 }

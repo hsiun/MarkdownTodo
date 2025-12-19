@@ -586,6 +586,7 @@ class SyncManager(
         }
     }
 
+
     /**
      * 从Git目录加载数据到应用内存
      */
@@ -619,7 +620,19 @@ class SyncManager(
             val currentListFile = File(todoListsDir, todoListManager.getCurrentListFileName())
             if (currentListFile.exists()) {
                 val todos = readTodosFromFile(currentListFile)
-                todoManager.replaceAllTodos(todos)
+
+                // 确保所有待办的更新时间正确
+                val updatedTodos = todos.map { todo ->
+                    // 如果updatedAt是空的，设置为当前时间
+                    if (todo.updatedAt.isEmpty() || todo.updatedAt == todo.createdAt) {
+                        val currentTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                        todo.copy(updatedAt = currentTime)
+                    } else {
+                        todo
+                    }
+                }
+
+                todoManager.replaceAllTodos(updatedTodos)
             }
 
             // 3. 加载笔记数据

@@ -3,11 +3,21 @@ package com.hsiun.markdowntodo
 import NoteItem
 import android.R
 import android.content.Intent
+import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.preference.PreferenceManager
+import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.widget.AdapterView
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -17,16 +27,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
-import android.content.SharedPreferences
-import android.content.res.ColorStateList
-import android.graphics.Typeface
-import android.util.Log
-import android.view.Gravity
-import android.view.View
-import android.widget.AdapterView
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import java.io.File
 
 class MainActivity : AppCompatActivity(),
@@ -779,7 +779,11 @@ class MainActivity : AppCompatActivity(),
 
         // 新增：每次回到应用时检查提醒
         todoManager.checkAndTriggerReminders()
+        // 新增：每次回到应用时检查提醒
+        todoManager.checkAndTriggerReminders()
 
+        // 新增：检查待办数据一致性
+        todoManager.ensureTodoConsistency()
         // 确保页面标题视图状态正确
         ensurePageTitleConsistency()
     }

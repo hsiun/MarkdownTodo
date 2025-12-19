@@ -100,6 +100,7 @@ class TodoAdapter(
             holder.titleText.paintFlags = 0
             holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
         }
+
         // 显示提醒时间
         val reminderStatus = todo.getReminderStatus()
         if (reminderStatus.isNotEmpty()) {
@@ -124,33 +125,27 @@ class TodoAdapter(
             holder.reminderText.visibility = View.GONE
         }
 
-        // 设置复选框监听器 - 修复这里！！！
+        // 设置复选框监听器 - 简化处理，只触发外部回调，不更新本地数据
         holder.checkbox.setOnCheckedChangeListener { _, isChecked ->
             if (isUpdating) {
                 return@setOnCheckedChangeListener
             }
 
             isUpdating = true
+
             try {
-                // 重要：创建待办项的副本并更新状态
-                val updatedTodo = todo.copy(isCompleted = isChecked)
+                // 记录原始状态，用于回滚
+                val originalChecked = todo.isCompleted
 
-                // 更新主列表中的待办项
-                val indexInTodos = todos.indexOfFirst { it.id == updatedTodo.id }
-                if (indexInTodos != -1) {
-                    todos[indexInTodos] = updatedTodo
+                // 如果状态没有变化，直接返回
+                if (isChecked == originalChecked) {
+                    isUpdating = false
+                    return@setOnCheckedChangeListener
                 }
 
-                // 更新过滤列表中的待办项
-                val indexInFiltered = filteredTodos.indexOfFirst { it.id == updatedTodo.id }
-                if (indexInFiltered != -1) {
-                    filteredTodos[indexInFiltered] = updatedTodo
-                }
+                Log.d("TodoAdapter", "待办状态改变: ID=${todo.id}, 标题='${todo.title}', 新状态=$isChecked")
 
-                // 通知外部（MainActivity）待办已更改
-                onTodoChanged(updatedTodo)
-
-                // 更新样式
+                // 立即更新视觉反馈
                 if (isChecked) {
                     holder.titleText.paintFlags = Paint.STRIKE_THRU_TEXT_FLAG
                     holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
@@ -159,24 +154,17 @@ class TodoAdapter(
                     holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
                 }
 
-                // 如果设置了只显示未完成，当待办被标记为完成时，从过滤列表中移除
-                if (displayMode == DisplayMode.ACTIVE && isChecked) {
-                    // 延迟更新列表，避免在RecyclerView布局过程中修改
-                    holder.itemView.post {
-                        updateFilteredList()
-                        notifyDataSetChanged()
-                    }
-                } else if (displayMode == DisplayMode.COMPLETED && !isChecked) {
-                    // 如果设置了只显示已完成，当待办被取消完成时，从过滤列表中移除
-                    holder.itemView.post {
-                        updateFilteredList()
-                        notifyDataSetChanged()
-                    }
-                }
+                // 触发外部回调，让TodoManager处理状态切换和数据更新
+                val updatedTodo = todo.copy(isCompleted = isChecked)
+                onTodoChanged(updatedTodo)
 
+                // 延迟一段时间后重置更新标记
+                holder.itemView.postDelayed({
+                    isUpdating = false
+                }, 500)
 
-
-            } finally {
+            } catch (e: Exception) {
+                Log.e("TodoAdapter", "复选框状态改变异常", e)
                 isUpdating = false
             }
         }
@@ -209,9 +197,6 @@ class TodoAdapter(
         }
     }
 
-    fun getPositionById(id: Int): Int {
-        return filteredTodos.indexOfFirst { it.id == id }
-    }
 
     // 设置显示模式
     fun setDisplayMode(mode: DisplayMode) {
@@ -227,8 +212,7 @@ class TodoAdapter(
         }
     }
 
-    // TodoAdapter.kt
-// 如果需要使用createdAt字段排序，可以添加一个辅助函数
+    // 如果需要使用createdAt字段排序，可以添加一个辅助函数
     private fun parseCreatedAtDate(todo: TodoItem): Date {
         return try {
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(todo.createdAt) ?: Date(0)
@@ -317,12 +301,4 @@ class TodoAdapter(
         }
     }
 
-    // 获取所有待办事项数量
-    fun getAllTodosCount(): Int = todos.size
-
-    // 获取活跃（未完成）待办事项数量
-    fun getActiveTodosCount(): Int = todos.count { !it.isCompleted }
-
-    // 获取已完成待办事项数量
-    fun getCompletedTodosCount(): Int = todos.count { it.isCompleted }
 }
