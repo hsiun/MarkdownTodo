@@ -9,6 +9,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.PullResult
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.transport.CredentialsProvider
@@ -94,7 +95,7 @@ class GitManager(
                             .setGitDir(File(repoDir, ".git"))
                             .build()
 
-                        var pullResult: PullResult? = null
+                        var pullResult: org.eclipse.jgit.api.PullResult? = null
 
                         repository.use { repo ->
                             Git(repo).use { git ->
@@ -104,31 +105,42 @@ class GitManager(
                                     .setCredentialsProvider(getCredentialsProvider())
                                     .call()
 
-                                // 拉取后检查文件状态
                                 Log.d(TAG, "拉取操作完成")
-
-                                // 列出notes目录中的文件
-                                val notesDir = File(repoDir, "notes")
-                                if (notesDir.exists()) {
-                                    val files = notesDir.listFiles()
-                                    Log.d(TAG, "拉取后笔记文件数: ${files?.size ?: 0}")
-                                    files?.forEach { file ->
-                                        Log.d(TAG, "  - ${file.name}, 大小: ${file.length()}")
-                                    }
-                                }
                             }
                         }
 
+                        // 检查拉取结果
                         if (pullResult?.isSuccessful == true) {
                             Log.d(TAG, "拉取成功")
                             Triple(true, pullResult, null)
                         } else {
                             Log.w(TAG, "拉取失败或存在冲突")
-                            Triple(false, null, "拉取失败")
+
+                            // 检查是否有合并冲突
+                            val mergeResult = pullResult?.mergeResult
+                            if (mergeResult?.mergeStatus == MergeResult.MergeStatus.CONFLICTING) {
+                                Log.d(TAG, "检测到合并冲突")
+                                Triple(false, pullResult, "合并冲突")
+                            } else {
+                                Triple(false, null, "拉取失败")
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "拉取失败", e)
-                        Triple(false, null, "拉取失败: ${e.localizedMessage ?: e.message}")
+
+                        // 特别处理 CheckoutConflictException
+                        if (e is org.eclipse.jgit.api.errors.CheckoutConflictException) {
+                            Log.d(TAG, "检出冲突异常")
+                            // 获取冲突文件列表
+                            val conflictFiles = mutableListOf<String>()
+                            if (e.conflictingPaths != null) {
+                                conflictFiles.addAll(e.conflictingPaths)
+                            }
+                            Log.d(TAG, "冲突文件: $conflictFiles")
+                            Triple(false, null, "检出冲突: ${conflictFiles.joinToString()}")
+                        } else {
+                            Triple(false, null, "拉取失败: ${e.localizedMessage ?: e.message}")
+                        }
                     }
                 }
 

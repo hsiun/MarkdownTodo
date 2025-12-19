@@ -27,6 +27,7 @@ import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.io.File
 
 class MainActivity : AppCompatActivity(),
     TodoManager.TodoChangeListener,
@@ -133,6 +134,7 @@ class MainActivity : AppCompatActivity(),
         todoManager.checkAndTriggerReminders()
     }
     private fun initManagers() {
+        ensureGitDirectoryStructure()
         // 初始化SettingsManager
         settingsManager = SettingsManager(this)
         settingsManager.addSettingsChangeListener(this)
@@ -157,7 +159,7 @@ class MainActivity : AppCompatActivity(),
         settingsDialogManager.setSettingsDialogListener(this)
 
         // 初始化SyncManager - 将 sharedPreferences 作为参数传递
-        syncManager = SyncManager(this, todoManager, noteManager, todoListManager, sharedPreferences)
+        syncManager = SyncManager(this, todoManager, noteManager, todoListManager)
         syncManager.setSyncListener(this)
 
         // 配置GitManager（如果已配置）
@@ -166,6 +168,22 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    private fun ensureGitDirectoryStructure() {
+        val gitRepoDir = File(filesDir, "git_repo")
+        if (!gitRepoDir.exists()) {
+            gitRepoDir.mkdirs()
+        }
+
+        val todoListsDir = File(gitRepoDir, "todo_lists")
+        if (!todoListsDir.exists()) {
+            todoListsDir.mkdirs()
+        }
+
+        val notesDir = File(gitRepoDir, "notes")
+        if (!notesDir.exists()) {
+            notesDir.mkdirs()
+        }
+    }
     private fun setupViewPager() {
         mainPagerAdapter = MainPagerAdapter(this)
         binding.viewPager.adapter = mainPagerAdapter
@@ -535,18 +553,31 @@ class MainActivity : AppCompatActivity(),
             Log.d("MainActivity", message)
 
             // 重新加载数据
-            todoManager.loadLocalTodos()
+            todoManager.loadCurrentListTodos()  // 改为这个
             noteManager.loadAllNotes()
             updatePageCounts()
         }
     }
 
+    // 在 onSyncError 方法中添加冲突处理的提示
     override fun onSyncError(error: String) {
         runOnUiThread {
             binding.swipeRefreshLayout.isRefreshing = false
             isSyncing = false
-            updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
-            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+
+            if (error.contains("冲突") || error.contains("Checkout conflict")) {
+                // 冲突相关的错误，提示用户
+                updateSyncIndicator("同步冲突", Color.parseColor("#FF9800"))
+                Toast.makeText(this, "检测到同步冲突，已自动处理", Toast.LENGTH_LONG).show()
+
+                // 重新加载数据
+                todoManager.loadCurrentListTodos()
+                noteManager.loadAllNotes()
+                updatePageCounts()
+            } else {
+                updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
+                Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

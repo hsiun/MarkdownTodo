@@ -1,11 +1,9 @@
-// ReminderScheduler.kt - 修改广播接收器部分
 package com.hsiun.markdowntodo
 
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -14,9 +12,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.util.Log
-import android.widget.Toast
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 
 class ReminderScheduler {

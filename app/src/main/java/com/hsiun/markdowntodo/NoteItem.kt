@@ -5,7 +5,6 @@ import java.util.Locale
 import java.util.UUID
 import kotlin.math.min
 
-// NoteItem.kt
 data class NoteItem(
     val id: Int,
     var title: String,

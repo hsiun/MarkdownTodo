@@ -1,4 +1,3 @@
-// OneRowTimePickerDialog.kt
 package com.hsiun.markdowntodo
 
 import android.app.Dialog
@@ -10,7 +9,6 @@ import android.widget.NumberPicker
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
-import java.text.SimpleDateFormat
 import java.util.*
 
 class OneRowTimePickerDialog : DialogFragment() {

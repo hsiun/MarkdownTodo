@@ -1,4 +1,3 @@
-// MainPagerAdapter.kt
 package com.hsiun.markdowntodo
 
 import androidx.fragment.app.Fragment

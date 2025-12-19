@@ -2,23 +2,22 @@ package com.hsiun.markdowntodo
 
 import android.content.Context
 import android.util.Log
-import java.io.File
 import org.json.JSONObject
+import java.io.File
 
 class TodoManager(private val context: Context) {
 
     companion object {
         private const val TAG = "TodoManager"
-        private const val TODO_FILE_NAME = "todos.md"
+        private const val GIT_REPO_DIR = "git_repo"
+        private const val DIR_TODO_LISTS = "todo_lists"
         private const val MAX_ID_FILE = "max_id.json"
     }
 
-    private lateinit var todoFile: File
     private var todos = mutableListOf<TodoItem>()
     private var nextId = 1
     private var todoChangeListener: TodoChangeListener? = null
     private lateinit var todoListManager: TodoListManager
-
 
     interface TodoChangeListener {
         fun onTodosChanged(todos: List<TodoItem>)
@@ -34,9 +33,8 @@ class TodoManager(private val context: Context) {
 
     fun init(todoListManager: TodoListManager) {
         this.todoListManager = todoListManager
-        todoFile = todoListManager.getTodoFileForCurrentList()
         loadMaxId()
-        loadLocalTodos()
+        loadCurrentListTodos()
     }
 
     private fun loadMaxId() {
@@ -66,19 +64,31 @@ class TodoManager(private val context: Context) {
         }
     }
 
-    fun loadLocalTodos() {
+    fun loadCurrentListTodos() {
         try {
-            todoFile = todoListManager.getTodoFileForCurrentList()
+            // 从Git目录读取当前列表的待办事项
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
 
-            if (!todoFile.exists()) {
-                Log.d(TAG, "待办文件不存在，创建空文件")
-                todoFile.createNewFile()
-                saveTodosToFile(emptyList())
+            if (!todoListsDir.exists()) {
+                Log.d(TAG, "Git待办目录不存在，创建空目录")
+                todoListsDir.mkdirs()
                 todoChangeListener?.onTodosChanged(emptyList())
                 return
             }
 
-            val loadedTodos = readTodosFromFile(todoFile)
+            val currentListFileName = todoListManager.getCurrentListFileName()
+            val listFile = File(todoListsDir, currentListFileName)
+
+            if (!listFile.exists()) {
+                Log.d(TAG, "待办文件不存在，创建空文件")
+                listFile.createNewFile()
+                saveTodosToFile(emptyList(), listFile)
+                todoChangeListener?.onTodosChanged(emptyList())
+                return
+            }
+
+            val loadedTodos = readTodosFromFile(listFile)
             // 新添加的放在前面
             val sortedTodos = loadedTodos.sortedBy { it.id }.reversed()
 
@@ -96,7 +106,7 @@ class TodoManager(private val context: Context) {
             saveMaxId()
             todoChangeListener?.onTodosChanged(sortedTodos)
 
-            Log.d(TAG, "加载本地待办事项完成: ${sortedTodos.size} 条, nextId: $nextId")
+            Log.d(TAG, "加载待办事项完成: ${sortedTodos.size} 条, nextId: $nextId")
         } catch (e: Exception) {
             Log.e(TAG, "加载失败", e)
             todoChangeListener?.onTodoError("加载失败: ${e.message}")
@@ -130,7 +140,7 @@ class TodoManager(private val context: Context) {
             Log.d(TAG, "添加待办事项: ID=$newId, 标题='$title', 提醒时间=${if (setReminder) remindTime else "未设置"}, 重复类型=${RepeatType.fromValue(repeatType).displayName}")
 
             todos.add(todo)
-            saveLocalTodos()
+            saveCurrentListTodos()
             saveMaxId()
 
             if (setReminder && remindTime > 0) {
@@ -180,7 +190,7 @@ class TodoManager(private val context: Context) {
 
             todos[todoIndex] = updatedTodo
 
-            saveLocalTodos()
+            saveCurrentListTodos()
 
             if (setReminder && remindTime > 0) {
                 // 设置新的提醒
@@ -217,7 +227,7 @@ class TodoManager(private val context: Context) {
 
             todos[todoIndex] = updatedTodo
 
-            saveLocalTodos()
+            saveCurrentListTodos()
             todoChangeListener?.onTodoUpdated(updatedTodo)
             updatedTodo
         } catch (e: Exception) {
@@ -242,7 +252,7 @@ class TodoManager(private val context: Context) {
                 ReminderScheduler.cancelReminder(context, todoToDelete)
             }
 
-            saveLocalTodos()
+            saveCurrentListTodos()
             todoChangeListener?.onTodoDeleted(todoToDelete)
             todoToDelete
         } catch (e: Exception) {
@@ -251,7 +261,39 @@ class TodoManager(private val context: Context) {
             throw e
         }
     }
-    // 新增：处理重复提醒
+
+    // 保存当前列表的待办事项到Git目录
+    private fun saveCurrentListTodos() {
+        try {
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+
+            if (!todoListsDir.exists()) {
+                todoListsDir.mkdirs()
+            }
+
+            val currentListFileName = todoListManager.getCurrentListFileName()
+            val listFile = File(todoListsDir, currentListFileName)
+
+            saveTodosToFile(todos, listFile)
+
+            // 更新列表统计
+            val total = todos.size
+            val active = todos.count { !it.isCompleted }
+            todoListManager.updateListCount(
+                todoListManager.getCurrentListId(),
+                total,
+                active
+            )
+
+            Log.d(TAG, "已保存待办事项到Git目录: ${listFile.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存失败", e)
+            todoChangeListener?.onTodoError("保存失败: ${e.message}")
+        }
+    }
+
+    // 其他方法保持不变...
     fun handleRepeatedReminder(todoId: Int) {
         val todoIndex = todos.indexOfFirst { it.id == todoId }
         if (todoIndex == -1) return
@@ -271,7 +313,7 @@ class TodoManager(private val context: Context) {
                 )
 
                 todos[todoIndex] = updatedTodo
-                saveLocalTodos()
+                saveCurrentListTodos()
 
                 // 调度下一次提醒
                 ReminderScheduler.scheduleReminder(context, updatedTodo)
@@ -281,13 +323,12 @@ class TodoManager(private val context: Context) {
             // 非重复提醒，标记为已提醒
             val updatedTodo = oldTodo.copy(hasReminded = true)
             todos[todoIndex] = updatedTodo
-            saveLocalTodos()
+            saveCurrentListTodos()
         }
 
         todoChangeListener?.onTodoUpdated(todos[todoIndex])
     }
 
-    // 新增：获取所有设置了提醒的待办
     fun getTodosWithReminder(): List<TodoItem> {
         return todos.filter {
             (it.remindTime > 0 || it.nextRemindTime > 0) &&
@@ -296,8 +337,6 @@ class TodoManager(private val context: Context) {
         }
     }
 
-
-    // 新增：检查并触发到期的提醒
     fun checkAndTriggerReminders() {
         val now = System.currentTimeMillis()
         val todosToRemind = todos.filter {
@@ -312,7 +351,6 @@ class TodoManager(private val context: Context) {
         }
     }
 
-    // 新增：重新调度所有提醒
     fun rescheduleAllReminders() {
         val todosWithReminder = getTodosWithReminder()
         todosWithReminder.forEach { todo ->
@@ -321,39 +359,6 @@ class TodoManager(private val context: Context) {
         Log.d(TAG, "重新调度了 ${todosWithReminder.size} 个提醒")
     }
 
-    // 新增：标记为已提醒
-    private fun markAsReminded(id: Int): TodoItem? {
-        val todoIndex = todos.indexOfFirst { it.id == id }
-        if (todoIndex == -1) return null
-
-        val oldTodo = todos[todoIndex]
-        val updatedTodo = oldTodo.copy(hasReminded = true)
-        todos[todoIndex] = updatedTodo
-
-        saveLocalTodos()
-        todoChangeListener?.onTodoUpdated(updatedTodo)
-
-        return updatedTodo
-    }
-
-    fun deleteTodoByUuid(uuid: String): Boolean {
-        return try {
-            val todoIndex = todos.indexOfFirst { it.uuid == uuid }
-            if (todoIndex == -1) {
-                return false
-            }
-
-            val todoToDelete = todos[todoIndex]
-            todos.removeAt(todoIndex)
-
-            saveLocalTodos()
-            todoChangeListener?.onTodoDeleted(todoToDelete)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "根据UUID删除待办失败", e)
-            false
-        }
-    }
 
     fun replaceAllTodos(newTodos: List<TodoItem>) {
         // 先取消所有现有的提醒
@@ -372,7 +377,7 @@ class TodoManager(private val context: Context) {
             nextId = 1
         }
 
-        saveLocalTodos()
+        saveCurrentListTodos()
         saveMaxId()
 
         // 重新调度所有需要提醒的待办
@@ -386,71 +391,25 @@ class TodoManager(private val context: Context) {
         return todos.count { !it.isCompleted }
     }
 
-    fun getCompletedTodosCount(): Int {
-        return todos.count { it.isCompleted }
-    }
 
-    fun filterTodosByCompletion(showCompleted: Boolean): List<TodoItem> {
-        return if (showCompleted) {
-            todos.sortedBy { it.id }
-        } else {
-            todos.filter { !it.isCompleted }.sortedBy { it.id }
-        }
-    }
-
-    private fun saveLocalTodos() {
-        try {
-            todoFile = todoListManager.getTodoFileForCurrentList()
-            saveTodosToFile(todos)
-
-            // 更新列表统计
-            val total = todos.size
-            val active = todos.count { !it.isCompleted }
-            todoListManager.updateListCount(
-                todoListManager.getCurrentListId(),
-                total,
-                active
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "保存失败", e)
-            todoChangeListener?.onTodoError("保存失败: ${e.message}")
-        }
-    }
-    // 添加切换列表的方法
     fun switchTodoList(listId: String): Boolean {
         // 保存当前列表的状态
-        saveLocalTodos()
+        saveCurrentListTodos()
 
         // 切换列表
         if (todoListManager.setCurrentList(listId)) {
             // 重置内部状态
             todos.clear()
-            todoFile = todoListManager.getTodoFileForCurrentList()
-            loadLocalTodos()
+            loadCurrentListTodos()
 
-            Log.d(TAG, "切换到列表: ${todoListManager.getCurrentListName()}, 文件: ${todoFile.name}")
+            Log.d(TAG, "切换到列表: ${todoListManager.getCurrentListName()}")
             return true
         }
         return false
     }
-    private fun saveTodosToFile(todos: List<TodoItem>) {
-        try {
-            todoFile = todoListManager.getTodoFileForCurrentList()
 
-            todoFile.bufferedWriter().use { writer ->
-                writer.write("# 待办事项\n\n")
-                todos.forEach { todo ->
-                    writer.write("${todo.toMarkdownLine()}\n")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "保存文件失败", e)
-            throw e
-        }
-    }
-
+    // 从文件读取待办事项
     private fun readTodosFromFile(file: File): List<TodoItem> {
-
         return if (file.exists() && file.length() > 0) {
             try {
                 val lines = file.readLines()
@@ -468,6 +427,21 @@ class TodoManager(private val context: Context) {
             }
         } else {
             emptyList()
+        }
+    }
+
+    // 保存待办事项到文件
+    private fun saveTodosToFile(todos: List<TodoItem>, file: File) {
+        try {
+            file.bufferedWriter().use { writer ->
+                writer.write("# 待办事项\n\n")
+                todos.forEach { todo ->
+                    writer.write("${todo.toMarkdownLine()}\n")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "保存文件失败", e)
+            throw e
         }
     }
 }

@@ -1,4 +1,3 @@
-// NoteManager.kt
 package com.hsiun.markdowntodo
 
 import NoteItem
@@ -13,11 +12,13 @@ class NoteManager(private val context: Context) {
 
     companion object {
         private const val TAG = "NoteManager"
-        private const val NOTES_DIR = "notes"
+        private const val GIT_REPO_DIR = "git_repo"
+        private const val DIR_NOTES = "notes"
         private const val MAX_ID_FILE = "note_max_id.json"
     }
 
-    private val notesDir: File
+    private val repoDir = File(context.filesDir, GIT_REPO_DIR)
+    private val notesDir = File(repoDir, DIR_NOTES)
     private var notes = mutableListOf<NoteItem>()
     private var nextId = 1
 
@@ -32,7 +33,10 @@ class NoteManager(private val context: Context) {
     private var noteChangeListener: NoteChangeListener? = null
 
     init {
-        notesDir = File(context.filesDir, NOTES_DIR)
+        // 确保目录存在
+        if (!repoDir.exists()) {
+            repoDir.mkdirs()
+        }
         if (!notesDir.exists()) {
             notesDir.mkdirs()
         }
@@ -166,14 +170,6 @@ class NoteManager(private val context: Context) {
         return notes.toList()
     }
 
-    fun getNoteById(id: Int): NoteItem? {
-        return notes.find { it.id == id }
-    }
-
-    fun getNoteByUuid(uuid: String): NoteItem? {
-        return notes.find { it.uuid == uuid }
-    }
-
     fun addNote(title: String, content: String): NoteItem {
         return try {
             if (title.trim().isEmpty()) {
@@ -275,34 +271,6 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    fun saveAllNotes() {
-        try {
-            notes.forEach { note ->
-                saveNoteToFile(note)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "保存所有笔记失败", e)
-        }
-    }
-
-    fun exportToDirectory(directory: File) {
-        try {
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
-
-            notes.forEach { note ->
-                val exportFile = File(directory, "${note.title.replace("/", "_")}.md")
-                exportFile.writeText(note.toMarkdown())
-            }
-
-            Log.d(TAG, "导出 ${notes.size} 个笔记到 ${directory.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "导出笔记失败", e)
-            throw e
-        }
-    }
-    // 在 NoteManager 类中添加
     fun replaceAllNotes(newNotes: List<NoteItem>) {
         try {
             Log.d(TAG, "替换所有笔记，新笔记数量: ${newNotes.size}")
@@ -340,22 +308,6 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    fun getNotesStatistics(): NoteStatistics {
-        val total = notes.size
-        val totalChars = notes.sumOf { it.content.length }
-        val avgLength = if (total > 0) totalChars / total else 0
-        val recentNotes = notes.sortedByDescending { it.updatedAt }.take(5)
-
-        return NoteStatistics(total, totalChars, avgLength, recentNotes)
-    }
-
-    data class NoteStatistics(
-        val totalNotes: Int,
-        val totalCharacters: Int,
-        val averageLength: Int,
-        val recentNotes: List<NoteItem>
-    )
-
     fun verifyNoteDeleted(id: Int): Boolean {
         val noteExistsInList = notes.any { it.id == id }
 
@@ -367,4 +319,5 @@ class NoteManager(private val context: Context) {
 
         return !noteExistsInList && noteFile == null
     }
+
 }

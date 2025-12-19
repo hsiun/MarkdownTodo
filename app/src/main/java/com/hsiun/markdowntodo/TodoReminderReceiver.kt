@@ -1,4 +1,3 @@
-// TodoReminderReceiver.kt
 package com.hsiun.markdowntodo
 
 import android.content.BroadcastReceiver

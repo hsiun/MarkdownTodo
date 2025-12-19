@@ -1,4 +1,3 @@
-// TodoItem.kt
 package com.hsiun.markdowntodo
 
 import android.util.Log
@@ -14,29 +13,41 @@ data class TodoItem(
     val id: Int,
     var title: String,
     var isCompleted: Boolean = false,
+    var remindTime: Long = -1L,
+    var repeatType: Int = RepeatType.NONE.value,
     val createdAt: String = SimpleDateFormat(
         "yyyy-MM-dd HH:mm:ss",
         Locale.getDefault()
     ).format(Date()),
-    // 添加唯一标识符，防止同步冲突
     val uuid: String = UUID.randomUUID().toString(),
-    // 新增：提醒时间（时间戳，-1表示未设置）
-    var remindTime: Long = -1L,
-    // 新增：是否已提醒过
-    var hasReminded: Boolean = false,
-    // 新增：重复类型
-    var repeatType: Int = RepeatType.NONE.value,
-    // 新增：下次提醒时间（用于重复提醒）
+    var originalRemindTime: Long = -1L,
     var nextRemindTime: Long = -1L,
-    // 新增：原始提醒时间（用于重复计算）
-    var originalRemindTime: Long = -1L
+    var hasReminded: Boolean = false,
+    // 新增 updatedAt 字段
+    var updatedAt: String = SimpleDateFormat(
+        "yyyy-MM-dd HH:mm:ss",
+        Locale.getDefault()
+    ).format(Date())
 ) {
+
+    // 更新更新时间的方法
+    fun updateTime() {
+        updatedAt = SimpleDateFormat(
+            "yyyy-MM-dd HH:mm:ss",
+            Locale.getDefault()
+        ).format(Date())
+    }
+
+    // 修改 toMarkdownLine 方法，添加更新时间
     fun toMarkdownLine(): String {
-        val checkbox = if (isCompleted) "[x]" else "[ ]"
-        return "$checkbox $title | ID: $id | UUID: $uuid | Created: $createdAt | " +
-                "RemindTime: $remindTime | HasReminded: $hasReminded | " +
-                "RepeatType: $repeatType | NextRemindTime: $nextRemindTime | " +
-                "OriginalRemindTime: $originalRemindTime"
+        return "- [${if (isCompleted) "x" else " "}] $title " +
+                "| ID: $id | UUID: $uuid " +
+                "| 创建时间: $createdAt | 更新时间: $updatedAt " +
+                "| 提醒时间: ${if (remindTime > 0) SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(remindTime)) else "未设置"} " +
+                "| 重复类型: ${RepeatType.fromValue(repeatType).displayName} " +
+                "| 原始提醒时间: ${if (originalRemindTime > 0) SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(originalRemindTime)) else "未设置"} " +
+                "| 下次提醒时间: ${if (nextRemindTime > 0) SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(nextRemindTime)) else "未设置"} " +
+                "| 已提醒: $hasReminded | 已完成: $isCompleted"
     }
 
     // 新增：格式化时间显示（移出companion object）

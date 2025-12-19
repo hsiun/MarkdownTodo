@@ -11,6 +11,8 @@ class TodoListManager(private val context: Context) {
         private const val TAG = "TodoListManager"
         private const val DEFAULT_LIST_NAME = "默认待办"
         private const val DEFAULT_FILE_NAME = "todos.md"
+        private const val GIT_REPO_DIR = "git_repo"
+        private const val DIR_TODO_LISTS = "todo_lists"
         private const val TODO_LISTS_FILE = "todo_lists.json"
     }
 
@@ -153,8 +155,14 @@ class TodoListManager(private val context: Context) {
         todoLists.add(newList)
         saveTodoLists()
 
-        // 创建空文件
-        val listFile = File(context.filesDir, fileName)
+        // 在Git目录中创建空文件
+        val repoDir = File(context.filesDir, GIT_REPO_DIR)
+        val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+        if (!todoListsDir.exists()) {
+            todoListsDir.mkdirs()
+        }
+
+        val listFile = File(todoListsDir, fileName)
         if (!listFile.exists()) {
             listFile.createNewFile()
             saveEmptyTodosToFile(listFile)
@@ -177,7 +185,8 @@ class TodoListManager(private val context: Context) {
         var counter = 1
 
         // 检查文件名是否已存在
-        while (todoLists.any { it.fileName == fileName } || File(context.filesDir, fileName).exists()) {
+        while (todoLists.any { it.fileName == fileName } ||
+            File(context.filesDir, "$GIT_REPO_DIR/$DIR_TODO_LISTS/$fileName").exists()) {
             fileName = "${baseName}_${counter}.md"
             counter++
         }
@@ -201,37 +210,6 @@ class TodoListManager(private val context: Context) {
         }
     }
 
-    fun deleteList(listId: String): Boolean {
-        val list = todoLists.find { it.id == listId } ?: return false
-
-        // 不能删除默认列表
-        if (list.isDefault) {
-            Log.w(TAG, "不能删除默认列表")
-            return false
-        }
-
-        // 如果要删除的是当前选中的列表，切换到默认列表
-        if (listId == currentListId) {
-            val defaultList = todoLists.find { it.isDefault }
-            defaultList?.let {
-                it.isSelected = true
-                currentListId = it.id
-            }
-        }
-
-        // 删除对应的待办文件
-        val todoFile = File(context.filesDir, list.fileName)
-        if (todoFile.exists()) {
-            todoFile.delete()
-        }
-
-        // 删除列表记录
-        todoLists.remove(list)
-        saveTodoLists()
-
-        Log.d(TAG, "删除列表: ${list.name}")
-        return true
-    }
 
     fun updateListCount(listId: String, total: Int, active: Int): Boolean {
         val list = todoLists.find { it.id == listId } ?: return false
@@ -241,49 +219,18 @@ class TodoListManager(private val context: Context) {
         return true
     }
 
-    fun updateListName(listId: String, newName: String): Boolean {
-        if (newName.isBlank()) return false
-
-        val list = todoLists.find { it.id == listId } ?: return false
-
-        // 检查是否已存在同名列表
-        if (todoLists.any { it.name == newName && it.id != listId && !it.isDefault }) {
-            return false
-        }
-
-        list.name = newName
-        saveTodoLists()
-
-        // 如果文件是默认的todos.md，不需要重命名文件
-        if (list.fileName != DEFAULT_FILE_NAME) {
-            val newFileName = generateFileName(newName)
-            val oldFile = File(context.filesDir, list.fileName)
-            val newFile = File(context.filesDir, newFileName)
-
-            if (oldFile.exists()) {
-                oldFile.renameTo(newFile)
-                list.fileName = newFileName
-                saveTodoLists()
-            }
-        }
-
-        return true
-    }
-
-    private fun generateFileName(listName: String): String {
-        // 使用拼音转换或简单的格式化，这里用简单处理
-        val cleanName = listName.replace("[^a-zA-Z0-9\u4e00-\u9fa5]".toRegex(), "")
-        return if (cleanName.isNotEmpty()) {
-            "${cleanName}_todos.md"
-        } else {
-            // 如果清理后为空，使用默认名称
-            "todos_${System.currentTimeMillis()}.md"
-        }
-    }
 
     fun getTodoFileForList(listId: String): File {
-        val list = todoLists.find { it.id == listId } ?: return File(context.filesDir, DEFAULT_FILE_NAME)
-        return File(context.filesDir, list.fileName)
+        val list = todoLists.find { it.id == listId } ?: return getDefaultTodoFile()
+        val repoDir = File(context.filesDir, GIT_REPO_DIR)
+        val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+        return File(todoListsDir, list.fileName)
+    }
+
+    private fun getDefaultTodoFile(): File {
+        val repoDir = File(context.filesDir, GIT_REPO_DIR)
+        val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+        return File(todoListsDir, DEFAULT_FILE_NAME)
     }
 
     fun getTodoFileForCurrentList(): File {
@@ -333,8 +280,15 @@ class TodoListManager(private val context: Context) {
                 return true
             }
 
+            // 确保Git目录存在
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+            if (!todoListsDir.exists()) {
+                todoListsDir.mkdirs()
+            }
+
             // 创建列表文件（如果不存在）
-            val listFile = File(context.filesDir, todoList.fileName)
+            val listFile = File(todoListsDir, todoList.fileName)
             if (!listFile.exists()) {
                 listFile.createNewFile()
                 saveEmptyTodosToFile(listFile)
@@ -353,34 +307,4 @@ class TodoListManager(private val context: Context) {
         }
     }
 
-    // 更新列表的所有信息（不仅仅是名称）
-    fun updateListInfo(listId: String, newName: String, newFileName: String, todoCount: Int, activeCount: Int): Boolean {
-        val list = todoLists.find { it.id == listId } ?: return false
-
-        if (newName.isBlank()) return false
-
-        // 检查是否已存在同名列表（排除自身）
-        if (todoLists.any { it.name == newName && it.id != listId && !it.isDefault }) {
-            return false
-        }
-
-        list.name = newName
-        list.fileName = newFileName
-        list.todoCount = todoCount
-        list.activeCount = activeCount
-
-        saveTodoLists()
-
-        // 如果需要重命名文件
-        if (list.fileName != newFileName && !list.isDefault) {
-            val oldFile = File(context.filesDir, list.fileName)
-            val newFile = File(context.filesDir, newFileName)
-
-            if (oldFile.exists()) {
-                oldFile.renameTo(newFile)
-            }
-        }
-
-        return true
-    }
 }

@@ -1,4 +1,3 @@
-// TimePickerHelper.kt
 package com.hsiun.markdowntodo
 
 import android.app.DatePickerDialog

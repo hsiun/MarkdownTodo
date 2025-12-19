@@ -1,4 +1,3 @@
-// NoteDialogManager.kt
 package com.hsiun.markdowntodo
 
 import NoteItem
