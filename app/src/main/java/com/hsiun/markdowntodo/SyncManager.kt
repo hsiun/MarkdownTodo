@@ -533,21 +533,14 @@ class SyncManager(
     /**
      * 解析笔记更新时间
      */
-    private fun parseNoteUpdateTime(content: String): Long {
-        try {
-            // 在笔记内容中查找更新时间
-            val pattern = Regex("更新时间:\\s*(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})")
-            val match = pattern.find(content)
-
-            if (match != null) {
-                val dateStr = match.groupValues[1]
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                return dateFormat.parse(dateStr)?.time ?: 0L
-            }
+    private fun parseNoteUpdateTime(dateString: String): Long {
+        return try {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            dateFormat.parse(dateString)?.time ?: 0L
         } catch (e: Exception) {
             Log.e(TAG, "解析笔记更新时间失败", e)
+            0L
         }
-        return 0L
     }
     /**
      * 自动推送列表元数据变更
@@ -869,9 +862,11 @@ class SyncManager(
             // 清空笔记目录
             notesDir.listFiles()?.forEach { it.delete() }
 
-            // 保存笔记
+            // 保存笔记 - 使用 NoteManager 相同的逻辑获取文件名
             notes.forEach { note ->
-                val noteFile = File(notesDir, "note_${note.id}_${note.uuid}.md")
+                // 获取与 NoteManager 一致的文件名
+                val fileName = note.getSafeFileName() + ".md"
+                val noteFile = File(notesDir, fileName)
                 noteFile.writeText(note.toMarkdown())
             }
 
@@ -891,16 +886,44 @@ class SyncManager(
 
         syncScope.launch {
             try {
-                gitManager.removeFile(
-                    filePattern = "$DIR_NOTES/note_${note.id}_${note.uuid}.md",
-                    commitMessage = "删除笔记: ${note.title}",
-                    onSuccess = {
-                        syncListener?.onSyncStatusChanged("删除同步成功")
-                    },
-                    onError = { error ->
-                        syncListener?.onSyncError("删除同步失败: $error")
+                // 由于文件名现在是基于标题的，我们需要找到对应的文件名
+                // 注意：这里假设文件名是基于标题的，可能需要在NoteManager中提供一个获取文件名的方法
+                // 或者我们可以直接删除所有以该笔记ID开头的文件
+
+                // 先获取所有可能的文件名
+                val noteDir = File(context.filesDir, "$GIT_REPO_DIR/$DIR_NOTES")
+                val noteFiles = noteDir.listFiles { file ->
+                    file.isFile && file.name.endsWith(".md")
+                } ?: emptyArray()
+
+                var fileNameToDelete = ""
+                for (file in noteFiles) {
+                    try {
+                        val content = file.readText()
+                        val fileNote = NoteItem.fromMarkdown(content)
+                        if (fileNote?.id == note.id) {
+                            fileNameToDelete = file.name
+                            break
+                        }
+                    } catch (e: Exception) {
+                        // 忽略解析失败的文件
                     }
-                )
+                }
+
+                if (fileNameToDelete.isNotEmpty()) {
+                    gitManager.removeFile(
+                        filePattern = "$DIR_NOTES/$fileNameToDelete",
+                        commitMessage = "删除笔记: ${note.title}",
+                        onSuccess = {
+                            syncListener?.onSyncStatusChanged("删除同步成功")
+                        },
+                        onError = { error ->
+                            syncListener?.onSyncError("删除同步失败: $error")
+                        }
+                    )
+                } else {
+                    Log.w(TAG, "未找到要删除的笔记文件: ID=${note.id}, Title=${note.title}")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "删除笔记同步异常", e)
             }
@@ -1069,8 +1092,8 @@ class SyncManager(
                     val ourContent = conflictParts[0]  // 我们的版本
                     val theirContent = conflictParts[2] // 他们的版本
 
-                    // 按更新时间合并
-                    val mergedContent = mergeNotesByUpdateTime(ourContent, theirContent)
+                    // 按UUID和更新时间合并笔记
+                    val mergedContent = mergeNotesByUuidAndTime(ourContent, theirContent)
 
                     // 写回文件
                     file.writeText(mergedContent)
@@ -1090,6 +1113,41 @@ class SyncManager(
         }
     }
 
+    /**
+     * 合并笔记（按UUID和更新时间）
+     */
+    private fun mergeNotesByUuidAndTime(ourContent: String, theirContent: String): String {
+        try {
+            // 解析我们的笔记
+            val ourNote = NoteItem.fromMarkdown(ourContent)
+            // 解析他们的笔记
+            val theirNote = NoteItem.fromMarkdown(theirContent)
+
+            if (ourNote == null && theirNote == null) {
+                return ourContent
+            } else if (ourNote == null) {
+                return theirContent
+            } else if (theirNote == null) {
+                return ourContent
+            }
+
+            // 比较更新时间，保留最新的
+            val ourTime = parseNoteUpdateTime(ourNote.updatedAt)
+            val theirTime = parseNoteUpdateTime(theirNote.updatedAt)
+
+            return if (ourTime >= theirTime) {
+                // 使用我们的版本，但要确保UUID正确
+                ourContent
+            } else {
+                // 使用他们的版本
+                theirContent
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "合并笔记失败", e)
+            // 合并失败，使用我们的版本
+            return ourContent
+        }
+    }
     /**
      * 合并笔记（按更新时间）
      */

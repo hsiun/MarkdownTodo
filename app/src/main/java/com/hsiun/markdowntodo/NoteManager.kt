@@ -22,6 +22,9 @@ class NoteManager(private val context: Context) {
     private var notes = mutableListOf<NoteItem>()
     private var nextId = 1
 
+    // 记录笔记ID和文件名的映射关系
+    private val noteFileMap = mutableMapOf<Int, String>()
+
     interface NoteChangeListener {
         fun onNotesChanged(notes: List<NoteItem>)
         fun onNoteAdded(note: NoteItem)
@@ -78,6 +81,7 @@ class NoteManager(private val context: Context) {
     fun loadAllNotes() {
         try {
             notes.clear()
+            noteFileMap.clear()
 
             if (!notesDir.exists() || !notesDir.isDirectory) {
                 Log.d(TAG, "笔记目录不存在，创建目录")
@@ -93,22 +97,100 @@ class NoteManager(private val context: Context) {
             Log.d(TAG, "找到 ${noteFiles.size} 个笔记文件")
 
             val loadedNotes = mutableListOf<NoteItem>()
-            noteFiles.forEach { file ->
-                try {
-                    // 从文件名解析ID和UUID
-                    val (id, uuid) = parseIdAndUuidFromFilename(file.name)
+            val processedFiles = mutableMapOf<Int, Pair<NoteItem, String>>() // 存储ID -> (笔记, 原文件名)
 
-                    if (id == -1 || uuid.isNullOrEmpty()) {
-                        Log.w(TAG, "文件名格式不正确，跳过: ${file.name}")
-                        return@forEach
+            // 第一步：收集所有笔记，识别旧格式
+            noteFiles.forEach { originalFile ->
+                try {
+                    val content = originalFile.readText()
+
+                    // 从文件内容中解析笔记
+                    val note = NoteItem.fromMarkdown(content)
+
+                    note?.let { loadedNote ->
+                        // 检查是否是旧格式（内容没有UUID注释或文件名包含UUID）
+                        val isOldFormat = !content.startsWith("<!-- UUID: ") ||
+                                originalFile.name.contains("_${loadedNote.uuid}.md") ||
+                                originalFile.name.matches(Regex("note_\\d+_[a-f0-9-]+\\.md"))
+
+                        processedFiles[loadedNote.id] = Pair(loadedNote, originalFile.name)
+
+                        if (isOldFormat) {
+                            Log.d(TAG, "检测到旧格式笔记: ${originalFile.name}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "读取笔记文件失败: ${originalFile.name}", e)
+                }
+            }
+
+            // 第二步：为每个笔记生成新文件名
+            val usedFileNames = mutableSetOf<String>()
+            val renameMap = mutableMapOf<Int, Pair<String, String>>() // ID -> (原文件名, 新文件名)
+
+            processedFiles.forEach { (id, pair) ->
+                val (note, originalFileName) = pair
+
+                // 生成新文件名
+                val newFileName = generateUniqueFileName(note, usedFileNames)
+                usedFileNames.add(newFileName)
+
+                // 如果文件名需要更改，记录重命名信息
+                if (originalFileName != newFileName) {
+                    renameMap[id] = Pair(originalFileName, newFileName)
+                    Log.d(TAG, "计划重命名: $originalFileName -> $newFileName")
+                }
+
+                loadedNotes.add(note)
+            }
+
+            // 第三步：执行文件操作（先重命名，再删除旧格式文件）
+            renameMap.forEach { (id, fileNames) ->
+                val (oldFileName, newFileName) = fileNames
+
+                try {
+                    val oldFile = File(notesDir, oldFileName)
+                    val newFile = File(notesDir, newFileName)
+
+                    // 如果旧文件是旧格式，先保存为新格式内容
+                    val note = processedFiles[id]?.first
+                    if (note != null && oldFile.name.contains("_${note.uuid}.md")) {
+                        // 保存为新格式
+                        newFile.writeText(note.toMarkdown())
+
+                        // 删除旧文件
+                        if (oldFile.exists()) {
+                            oldFile.delete()
+                            Log.d(TAG, "删除旧格式文件: $oldFileName")
+                        }
+                    } else if (oldFile.exists()) {
+                        // 只是重命名，移动文件
+                        oldFile.renameTo(newFile)
+                        Log.d(TAG, "重命名文件: $oldFileName -> $newFileName")
                     }
 
-                    val content = file.readText()
-                    // 传入从文件名解析的ID和UUID
-                    val note = NoteItem.fromMarkdown(content, id, uuid)
-                    note?.let { loadedNotes.add(it) }
+                    // 更新映射
+                    noteFileMap[id] = newFileName
                 } catch (e: Exception) {
-                    Log.e(TAG, "读取笔记文件失败: ${file.name}", e)
+                    Log.e(TAG, "处理文件失败: $oldFileName -> $newFileName", e)
+                }
+            }
+
+            // 第四步：处理不需要重命名的文件，但需要检查格式
+            processedFiles.forEach { (id, pair) ->
+                val (note, fileName) = pair
+
+                if (!renameMap.containsKey(id)) {
+                    val file = File(notesDir, fileName)
+                    if (file.exists()) {
+                        val content = file.readText()
+                        // 如果是旧格式，更新内容
+                        if (!content.startsWith("<!-- UUID: ")) {
+                            Log.d(TAG, "更新文件格式: $fileName")
+                            file.writeText(note.toMarkdown())
+                        }
+                    }
+                    noteFileMap[id] = fileName
                 }
             }
 
@@ -136,34 +218,67 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    // 从文件名解析ID和UUID的辅助方法
-    private fun parseIdAndUuidFromFilename(filename: String): Pair<Int, String> {
-        return try {
-            // 文件名格式：note_{id}_{uuid}.md
-            val pattern = Regex("note_(\\d+)_([a-f0-9-]+)\\.md")
-            val match = pattern.find(filename)
+    /**
+     * 生成唯一的文件名
+     */
+    private fun generateUniqueFileName(note: NoteItem, usedFileNames: Set<String>): String {
+        var baseName = note.getSafeFileName()
+        var fileName = "$baseName.md"
+        var counter = 1
 
-            if (match != null && match.groupValues.size >= 3) {
-                val id = match.groupValues[1].toInt()
-                val uuid = match.groupValues[2]
-                Pair(id, uuid)
+        // 确保文件名唯一
+        while (usedFileNames.contains(fileName) || File(notesDir, fileName).exists()) {
+            fileName = if (counter == 1) {
+                "${baseName}_${note.id}.md"
             } else {
-                // 尝试旧的格式（包含UUID在文件名中）
-                val oldPattern = Regex("note_(\\d+)_([^_]+)\\.md")
-                val oldMatch = oldPattern.find(filename)
-
-                if (oldMatch != null && oldMatch.groupValues.size >= 3) {
-                    val id = oldMatch.groupValues[1].toInt()
-                    val uuid = oldMatch.groupValues[2]
-                    Pair(id, uuid)
-                } else {
-                    Pair(-1, "")
-                }
+                "${baseName}_${note.id}_${counter}.md"
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "解析文件名失败: $filename", e)
-            Pair(-1, "")
+            counter++
         }
+
+        return fileName
+    }
+
+    // 根据笔记生成文件名（使用标题，可能包含ID以防止重复）
+    private fun getFileNameForNote(note: NoteItem): String {
+        val safeName = note.getSafeFileName()
+        var fileName = "$safeName.md"
+
+        // 检查是否已存在相同文件名的文件（且不是当前笔记）
+        var counter = 1
+        while (true) {
+            val existingFile = File(notesDir, fileName)
+            val fileExists = existingFile.exists()
+
+            // 如果文件存在，检查是否是当前笔记的文件
+            if (fileExists) {
+                val isCurrentNoteFile = try {
+                    val content = existingFile.readText()
+                    val existingNote = NoteItem.fromMarkdown(content)
+                    existingNote?.id == note.id
+                } catch (e: Exception) {
+                    false
+                }
+
+                if (isCurrentNoteFile) {
+                    // 是当前笔记的文件，使用这个文件名
+                    break
+                } else {
+                    // 不是当前笔记的文件，尝试其他名称
+                    fileName = if (counter == 1) {
+                        "${safeName}_${note.id}.md"
+                    } else {
+                        "${safeName}_${note.id}_${counter}.md"
+                    }
+                    counter++
+                }
+            } else {
+                // 文件不存在，可以使用这个名称
+                break
+            }
+        }
+
+        return fileName
     }
 
     fun getAllNotes(): List<NoteItem> {
@@ -208,14 +323,17 @@ class NoteManager(private val context: Context) {
             val oldNote = notes[noteIndex]
             val updatedNote = oldNote.copy(
                 title = title,
-                content = content,  // 直接使用纯内容
+                content = content,
                 updatedAt = SimpleDateFormat(
                     "yyyy-MM-dd HH:mm:ss",
                     Locale.getDefault()
                 ).format(Date())
             )
 
+            // 更新列表
             notes[noteIndex] = updatedNote
+
+            // 保存到文件（会自动处理旧文件清理）
             saveNoteToFile(updatedNote)
 
             noteChangeListener?.onNoteUpdated(updatedNote)
@@ -238,9 +356,27 @@ class NoteManager(private val context: Context) {
             notes.removeAt(noteIndex)
 
             // 删除对应的文件
-            val noteFile = File(notesDir, "note_${noteToDelete.id}_${noteToDelete.uuid}.md")
-            if (noteFile.exists()) {
-                noteFile.delete()
+            val fileName = noteFileMap.remove(id)
+            if (fileName != null) {
+                val noteFile = File(notesDir, fileName)
+                if (noteFile.exists()) {
+                    noteFile.delete()
+                    Log.d(TAG, "删除笔记文件: $fileName")
+                }
+            }
+
+            // 额外清理：删除可能存在的旧格式文件
+            val oldFormatFiles = notesDir.listFiles { file ->
+                file.isFile &&
+                        (file.name.startsWith("note_${id}_") ||
+                                file.name.contains("_${noteToDelete.uuid}.md"))
+            } ?: emptyArray()
+
+            oldFormatFiles.forEach { file ->
+                if (file.exists() && file.name != fileName) {
+                    file.delete()
+                    Log.d(TAG, "删除旧格式文件: ${file.name}")
+                }
             }
 
             noteChangeListener?.onNoteDeleted(noteToDelete)
@@ -249,6 +385,53 @@ class NoteManager(private val context: Context) {
             Log.e(TAG, "删除笔记失败", e)
             noteChangeListener?.onNoteError("删除笔记失败: ${e.message}")
             throw e
+        }
+    }
+    private fun saveNoteToFile(note: NoteItem) {
+        try {
+            val newFileName = getFileNameForNote(note)
+            val oldFileName = noteFileMap[note.id]
+
+            // 如果存在旧文件且文件名不同，删除旧文件
+            if (oldFileName != null && oldFileName != newFileName) {
+                val oldFile = File(notesDir, oldFileName)
+                if (oldFile.exists()) {
+                    oldFile.delete()
+                    Log.d(TAG, "删除旧文件: $oldFileName")
+                }
+            }
+
+            // 保存新文件
+            val noteFile = File(notesDir, newFileName)
+            noteFile.writeText(note.toMarkdown())
+            noteFileMap[note.id] = newFileName
+            // 清理可能的重复文件
+            cleanupDuplicateNoteFiles(note, newFileName)
+
+            Log.d(TAG, "保存笔记到文件: $newFileName")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存笔记文件失败", e)
+            throw e
+        }
+    }
+    private fun cleanupDuplicateNoteFiles(note: NoteItem, currentFileName: String) {
+        try {
+            // 查找所有可能重复的文件
+            val duplicateFiles = notesDir.listFiles { file ->
+                file.isFile && file.name.endsWith(".md") &&
+                        (file.name.contains("_${note.uuid}.md") ||
+                                file.name.startsWith("note_${note.id}_"))
+            } ?: emptyArray()
+
+            // 删除除当前文件外的所有重复文件
+            duplicateFiles.forEach { file ->
+                if (file.name != currentFileName && file.exists()) {
+                    file.delete()
+                    Log.d(TAG, "删除重复笔记文件: ${file.name}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "清理重复文件失败", e)
         }
     }
 
@@ -260,23 +443,13 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    private fun saveNoteToFile(note: NoteItem) {
-        try {
-            val noteFile = File(notesDir, "note_${note.id}_${note.uuid}.md")
-            noteFile.writeText(note.toMarkdown())
-            Log.d(TAG, "保存笔记到文件: ${noteFile.name}")
-        } catch (e: Exception) {
-            Log.e(TAG, "保存笔记文件失败", e)
-            throw e
-        }
-    }
-
     fun replaceAllNotes(newNotes: List<NoteItem>) {
         try {
             Log.d(TAG, "替换所有笔记，新笔记数量: ${newNotes.size}")
 
-            // 清空当前笔记列表
+            // 清空当前笔记列表和文件映射
             notes.clear()
+            noteFileMap.clear()
 
             // 清空笔记目录
             if (notesDir.exists() && notesDir.isDirectory) {
@@ -311,13 +484,17 @@ class NoteManager(private val context: Context) {
     fun verifyNoteDeleted(id: Int): Boolean {
         val noteExistsInList = notes.any { it.id == id }
 
-        val noteFile = notesDir.listFiles { file ->
-            file.name.startsWith("note_${id}_")
-        }?.firstOrNull()
+        // 检查文件是否存在
+        val fileName = noteFileMap[id]
+        val fileExists = if (fileName != null) {
+            File(notesDir, fileName).exists()
+        } else {
+            false
+        }
 
-        Log.d(TAG, "验证笔记删除 - ID=$id: 列表中存在=$noteExistsInList, 文件存在=${noteFile?.exists()}")
+        Log.d(TAG, "验证笔记删除 - ID=$id: 列表中存在=$noteExistsInList, 文件存在=$fileExists")
 
-        return !noteExistsInList && noteFile == null
+        return !noteExistsInList && !fileExists
     }
 
 }

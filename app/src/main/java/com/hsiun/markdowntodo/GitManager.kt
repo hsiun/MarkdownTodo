@@ -303,11 +303,19 @@ class GitManager(
                                 }
 
                                 // 使用 git.rm() 删除文件
-                                git.rm()
-                                    .addFilepattern(filePattern)
-                                    .call()
-
-                                Log.d(TAG, "已标记删除文件: $filePattern")
+                                try {
+                                    git.rm()
+                                        .addFilepattern(filePattern)
+                                        .call()
+                                    Log.d(TAG, "已标记删除文件: $filePattern")
+                                } catch (e: org.eclipse.jgit.api.errors.NoFilepatternException) {
+                                    // 如果文件模式无效，尝试使用相对路径
+                                    val relativePath = filePattern.replace("\\", "/")
+                                    git.rm()
+                                        .addFilepattern(relativePath)
+                                        .call()
+                                    Log.d(TAG, "已标记删除文件(使用相对路径): $relativePath")
+                                }
 
                                 // 检查是否有需要提交的更改
                                 val status = git.status().call()
