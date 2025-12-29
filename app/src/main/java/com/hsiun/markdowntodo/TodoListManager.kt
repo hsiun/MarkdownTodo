@@ -2,6 +2,8 @@ package com.hsiun.markdowntodo
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 // 待办列表管理器
@@ -14,6 +16,8 @@ class TodoListManager(private val context: Context) {
         private const val GIT_REPO_DIR = "git_repo"
         private const val DIR_TODO_LISTS = "todo_lists"
         private const val TODO_LISTS_FILE = "todo_lists.json"
+        // 新增：Git仓库中的元数据文件名
+        private const val FILE_METADATA = "metadata.json"
     }
 
     private val todoLists = mutableListOf<TodoList>()
@@ -110,7 +114,14 @@ class TodoListManager(private val context: Context) {
     fun getCurrentList(): TodoList? = todoLists.find { it.id == currentListId }
 
     fun getCurrentListFileName(): String {
-        return getCurrentList()?.fileName ?: DEFAULT_FILE_NAME
+        val currentList = getCurrentList()
+        return if (currentList != null) {
+            currentList.fileName
+        } else {
+            // 如果没有当前列表，检查是否有多条记录
+            val defaultList = todoLists.firstOrNull { it.isDefault }
+            defaultList?.fileName ?: DEFAULT_FILE_NAME
+        }
     }
 
     fun getCurrentListName(): String {
@@ -122,15 +133,72 @@ class TodoListManager(private val context: Context) {
     fun setCurrentList(listId: String): Boolean {
         val list = todoLists.find { it.id == listId } ?: return false
 
-        // 更新选中状态
-        todoLists.forEach { it.isSelected = (it.id == listId) }
+        Log.d(TAG, "设置当前列表: ${list.name} (ID: $listId)")
+
+        // 验证只有一个列表被选中
+        todoLists.forEach {
+            it.isSelected = (it.id == listId)
+            Log.d(TAG, "列表 ${it.name}: isSelected = ${it.isSelected}")
+        }
+
         currentListId = listId
         saveTodoLists()
 
-        Log.d(TAG, "切换到列表: ${list.name}")
+        // 新增：立即保存到 Git 目录
+        saveTodoListsMetadataToGit()
+
+        Log.d(TAG, "当前列表已设置为: ${list.name}")
         return true
     }
+    // 新增：保存列表元数据到 Git 目录
+    private fun saveTodoListsMetadataToGit() {
+        try {
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
 
+            if (!todoListsDir.exists()) {
+                todoListsDir.mkdirs()
+            }
+
+            // 保存元数据到 metadata.json 文件
+            val metadataFile = File(todoListsDir, FILE_METADATA)
+            saveTodoListsMetadata(todoLists, metadataFile)
+
+            Log.d(TAG, "已保存列表元数据到 Git 目录")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存列表元数据到 Git 目录失败", e)
+        }
+    }
+
+    // 新增：保存列表元数据到文件
+    fun saveTodoListsMetadata(todoLists: List<TodoList>, file: File) {
+        try {
+            Log.d(TAG, "保存列表元数据到文件: ${file.absolutePath}")
+
+            val jsonArray = JSONArray()
+
+            todoLists.forEach { list ->
+                val jsonObject = JSONObject().apply {
+                    put("id", list.id)
+                    put("name", list.name)
+                    put("fileName", list.fileName)
+                    put("todoCount", list.todoCount)
+                    put("activeCount", list.activeCount)
+                    put("createdAt", list.createdAt)
+                    put("isDefault", list.isDefault)
+                    put("isSelected", list.isSelected)
+                    Log.d(TAG, "保存列表: ${list.name}, isSelected: ${list.isSelected}")
+                }
+                jsonArray.put(jsonObject)
+            }
+
+            file.writeText(jsonArray.toString())
+            Log.d(TAG, "列表元数据保存成功: ${todoLists.size} 个列表")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存列表元数据失败", e)
+            throw e
+        }
+    }
     fun createList(name: String): TodoList? {
         if (name.isBlank()) {
             Log.w(TAG, "列表名称不能为空")

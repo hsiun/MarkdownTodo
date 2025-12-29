@@ -62,7 +62,7 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
             mutableListOf(),
             onTodoChanged = { todo ->
                 Log.d(TAG, "待办状态改变: ${todo.id} - ${todo.title}")
-                mainActivity.todoManager.toggleTodoStatus(todo.id)
+                mainActivity.todoManager.toggleTodoStatusByUuid(todo.uuid)
             },
             onTodoDeleted = { todo ->
                 Log.d(TAG, "删除待办: ${todo.id} - ${todo.title}")

@@ -845,6 +845,10 @@ class MainActivity : AppCompatActivity(),
             val todoFragment = supportFragmentManager.findFragmentByTag("todo_fragment") as? TodoFragment
             todoFragment?.loadTodos()
 
+            // 新增：立即同步列表元数据到 Git
+            syncManager.autoPushTodoLists("切换列表到 ${todoListManager.getCurrentListName()}")
+
+
             Toast.makeText(this, "已切换到 ${todoListManager.getCurrentListName()}", Toast.LENGTH_SHORT).show()
         }
     }
@@ -903,14 +907,36 @@ class MainActivity : AppCompatActivity(),
         return (dp * resources.displayMetrics.density).toInt()
     }
     override fun onTodoListCreated(name: String) {
+        Log.d("MainActivity", "开始创建列表: $name")
+
         val newList = todoListManager.createList(name)
         if (newList != null) {
+            // 记录当前列表状态
+            val previousListId = todoListManager.getCurrentListId()
+            val previousList = todoListManager.getCurrentList()
+            Log.d("MainActivity", "创建新列表前，当前列表: ${previousList?.name}")
+
             // 切换到新列表
-            switchTodoList(newList.id)
-            Toast.makeText(this, "已创建列表: $name", Toast.LENGTH_SHORT).show()
+            if (todoManager.switchTodoList(newList.id)) {
+                Toast.makeText(this, "已创建列表: $name", Toast.LENGTH_SHORT).show()
+
+                // 验证默认列表是否被修改
+                val defaultList = todoListManager.getAllLists().find { it.isDefault }
+                if (defaultList != null && defaultList.id != newList.id) {
+                    // 检查默认列表的文件是否被修改
+                    val defaultFile = File(filesDir, "git_repo/todo_lists/${defaultList.fileName}")
+                    if (defaultFile.exists()) {
+                        val defaultTodos = todoManager.readTodosFromFile(defaultFile)
+                        Log.d("MainActivity", "默认列表 '${defaultList.name}' 仍有 ${defaultTodos.size} 条待办")
+                    }
+                }
+            } else {
+                Toast.makeText(this, "切换列表失败", Toast.LENGTH_SHORT).show()
+            }
         } else {
             Toast.makeText(this, "创建失败，可能已存在同名列表", Toast.LENGTH_SHORT).show()
         }
+
         refreshSpinner()
     }
 

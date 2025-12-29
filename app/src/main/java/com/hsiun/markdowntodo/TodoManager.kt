@@ -1,6 +1,7 @@
 package com.hsiun.markdowntodo
 
 import android.content.Context
+import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
@@ -69,7 +70,18 @@ class TodoManager(private val context: Context) {
 
     fun loadCurrentListTodos() {
         try {
-            // 从Git目录读取当前列表的待办事项
+            // 1. 获取当前列表
+            val currentList = todoListManager.getCurrentList()
+
+            if (currentList == null) {
+                Log.w(TAG, "当前列表不存在，加载失败")
+                todoChangeListener?.onTodoError("当前列表不存在")
+                return
+            }
+
+            Log.d(TAG, "开始加载列表: ${currentList.name}, 文件: ${currentList.fileName}")
+
+            // 2. 从Git目录读取当前列表的待办事项
             val repoDir = File(context.filesDir, GIT_REPO_DIR)
             val todoListsDir = File(repoDir, DIR_TODO_LISTS)
 
@@ -80,36 +92,39 @@ class TodoManager(private val context: Context) {
                 return
             }
 
-            val currentListFileName = todoListManager.getCurrentListFileName()
-            val listFile = File(todoListsDir, currentListFileName)
+            val listFile = File(todoListsDir, currentList.fileName)
 
             if (!listFile.exists()) {
-                Log.d(TAG, "待办文件不存在，创建空文件")
+                Log.d(TAG, "待办文件不存在，创建空文件: ${listFile.absolutePath}")
                 listFile.createNewFile()
                 saveTodosToFile(emptyList(), listFile)
                 todoChangeListener?.onTodosChanged(emptyList())
                 return
             }
 
+            // 3. 读取文件内容
             val loadedTodos = readTodosFromFile(listFile)
-            // 新添加的放在前面
-            val sortedTodos = loadedTodos.sortedBy { it.id }.reversed()
+            Log.d(TAG, "从文件 ${currentList.fileName} 加载到 ${loadedTodos.size} 条待办事项")
 
-            Log.d(TAG, "加载到 ${sortedTodos.size} 条待办事项")
-
+            // 4. 更新内存中的数据
             todos.clear()
-            todos.addAll(sortedTodos)
+            todos.addAll(loadedTodos)
 
-            if (sortedTodos.isNotEmpty()) {
-                nextId = sortedTodos.maxOf { it.id } + 1
+            // 5. 更新下一个ID
+            if (loadedTodos.isNotEmpty()) {
+                nextId = loadedTodos.maxOf { it.id } + 1
             } else {
                 nextId = 1
             }
 
+            // 6. 保存最大ID和通知监听器
             saveMaxId()
-            todoChangeListener?.onTodosChanged(sortedTodos)
+            // 新增：加载后检查一致性
+            ensureTodoConsistency()
+            todoChangeListener?.onTodosChanged(loadedTodos)
 
-            Log.d(TAG, "加载待办事项完成: ${sortedTodos.size} 条, nextId: $nextId")
+            Log.d(TAG, "加载完成: ${loadedTodos.size} 条待办, nextId: $nextId")
+
         } catch (e: Exception) {
             Log.e(TAG, "加载失败", e)
             todoChangeListener?.onTodoError("加载失败: ${e.message}")
@@ -121,9 +136,69 @@ class TodoManager(private val context: Context) {
     }
 
     fun getTodoById(id: Int): TodoItem? {
-        return todos.find { it.id == id }
+        val items = todos.filter { it.id == id }
+        if (items.size > 1) {
+            Log.w(TAG, "发现多个ID为 $id 的待办事项，返回第一个")
+            // 触发修复
+            android.os.Handler(Looper.getMainLooper()).post {
+                detectAndFixDuplicateIds()
+            }
+        }
+        return items.firstOrNull()
     }
+    /**
+     * 检测并修复重复ID
+     */
+    private fun detectAndFixDuplicateIds(): Boolean {
+        Log.d(TAG, "开始检测重复ID")
 
+        val idMap = mutableMapOf<Int, MutableList<TodoItem>>()
+
+        // 1. 按ID分组，找出重复的ID
+        todos.forEach { todo ->
+            idMap.getOrPut(todo.id) { mutableListOf() }.add(todo)
+        }
+
+        val duplicateIds = idMap.filter { it.value.size > 1 }.keys
+        if (duplicateIds.isEmpty()) {
+            Log.d(TAG, "未发现重复ID")
+            return false
+        }
+
+        Log.w(TAG, "发现 ${duplicateIds.size} 个重复ID: $duplicateIds")
+
+        // 2. 修复重复ID
+        duplicateIds.forEach { duplicateId ->
+            val itemsWithSameId = idMap[duplicateId] ?: return@forEach
+
+            // 保留第一个，其他重新分配ID
+            val itemsToFix = itemsWithSameId.drop(1)
+            itemsToFix.forEachIndexed { index, todo ->
+                val newId = nextId + index
+                Log.w(TAG, "修复重复ID: 将待办 '${todo.title}' 的ID从 $duplicateId 改为 $newId")
+
+                // 在列表中更新这个待办事项
+                val todoIndex = todos.indexOfFirst { it.uuid == todo.uuid }
+                if (todoIndex != -1) {
+                    val fixedTodo = todo.copy(id = newId)
+                    todos[todoIndex] = fixedTodo
+
+                    // 更新监听器
+                    todoChangeListener?.onTodoUpdated(fixedTodo)
+                }
+            }
+
+            // 更新nextId
+            nextId += itemsToFix.size
+        }
+
+        // 3. 保存修复后的数据
+        saveCurrentListTodos()
+        saveMaxId()
+
+        Log.d(TAG, "重复ID修复完成，新的nextId: $nextId")
+        return true
+    }
     fun addTodo(title: String, setReminder: Boolean = false, remindTime: Long = -1L, repeatType: Int = RepeatType.NONE.value): TodoItem {
         return try {
             if (title.trim().isEmpty()) {
@@ -211,11 +286,14 @@ class TodoManager(private val context: Context) {
         }
     }
 
-    fun toggleTodoStatus(id: Int): TodoItem {
+    /**
+     * 通过UUID切换待办状态（更可靠）
+     */
+    fun toggleTodoStatusByUuid(uuid: String): TodoItem {
         return try {
-            val todoIndex = todos.indexOfFirst { it.id == id }
+            val todoIndex = todos.indexOfFirst { it.uuid == uuid }
             if (todoIndex == -1) {
-                throw IllegalArgumentException("未找到待办事项")
+                throw IllegalArgumentException("未找到UUID为 $uuid 的待办事项")
             }
 
             val oldTodo = todos[todoIndex]
@@ -240,7 +318,6 @@ class TodoManager(private val context: Context) {
             throw e
         }
     }
-
     fun deleteTodo(id: Int): TodoItem {
         return try {
             val todoIndex = todos.indexOfFirst { it.id == id }
@@ -398,23 +475,75 @@ class TodoManager(private val context: Context) {
 
 
     fun switchTodoList(listId: String): Boolean {
-        // 保存当前列表的状态
-        saveCurrentListTodos()
+        // 切换后打印状态todo 待删除
+        printAllListsStatus()
+        try {
+            Log.d(TAG, "开始切换列表: $listId")
 
-        // 切换列表
-        if (todoListManager.setCurrentList(listId)) {
-            // 重置内部状态
-            todos.clear()
-            loadCurrentListTodos()
+            // 1. 验证要切换的列表存在
+            val targetList = todoListManager.getAllLists().find { it.id == listId }
+            if (targetList == null) {
+                Log.e(TAG, "目标列表不存在: $listId")
+                return false
+            }
 
-            Log.d(TAG, "切换到列表: ${todoListManager.getCurrentListName()}")
-            return true
+            // 2. 获取当前列表ID（切换前）
+            val previousListId = todoListManager.getCurrentListId()
+            Log.d(TAG, "从列表 $previousListId 切换到 $listId")
+
+            // 3. 如果是切换到不同列表，保存当前列表
+            if (previousListId != listId) {
+                // 明确使用当前列表的文件名保存
+                val previousList = todoListManager.getAllLists().find { it.id == previousListId }
+                if (previousList != null) {
+                    saveTodosToFileWithName(todos, previousList.fileName)
+                    Log.d(TAG, "已保存前一个列表: ${previousList.name} 到文件: ${previousList.fileName}")
+                }
+            }
+
+            // 4. 切换列表
+            if (todoListManager.setCurrentList(listId)) {
+                // 5. 清空内存中的待办事项
+                todos.clear()
+
+                // 6. 加载新列表的待办事项
+                loadCurrentListTodos()
+
+                Log.d(TAG, "成功切换到列表: ${todoListManager.getCurrentListName()}")
+
+                return true
+            }
+            // 切换后打印状态todo 待删除
+            printAllListsStatus()
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "切换列表失败", e)
+            return false
         }
-        return false
+    }
+
+
+    // 新增：按文件名保存待办事项
+    private fun saveTodosToFileWithName(todosToSave: List<TodoItem>, fileName: String) {
+        try {
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+
+            if (!todoListsDir.exists()) {
+                todoListsDir.mkdirs()
+            }
+
+            val listFile = File(todoListsDir, fileName)
+            saveTodosToFile(todosToSave, listFile)
+
+            Log.d(TAG, "已保存 ${todosToSave.size} 条待办到文件: $fileName")
+        } catch (e: Exception) {
+            Log.e(TAG, "按文件名保存失败", e)
+        }
     }
 
     // 从文件读取待办事项
-    private fun readTodosFromFile(file: File): List<TodoItem> {
+    fun readTodosFromFile(file: File): List<TodoItem> {
         return if (file.exists() && file.length() > 0) {
             try {
                 val lines = file.readLines()
@@ -511,5 +640,40 @@ class TodoManager(private val context: Context) {
             Log.e(TAG, "解析更新时间失败: ${todo.updatedAt}", e)
             0L
         }
+    }
+
+    /**
+     * 打印所有列表的文件状态
+     */
+    fun printAllListsStatus() {
+        Log.d(TAG, "=== 所有列表状态 ===")
+
+        val repoDir = File(context.filesDir, GIT_REPO_DIR)
+        val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+
+        if (!todoListsDir.exists()) {
+            Log.d(TAG, "待办目录不存在")
+            return
+        }
+
+        // 列出所有文件
+        todoListsDir.listFiles()?.forEach { file ->
+            Log.d(TAG, "文件: ${file.name}, 大小: ${file.length()} 字节")
+            if (file.length() > 0) {
+                val content = file.readLines().take(5) // 只显示前5行
+                Log.d(TAG, "  内容预览: ${content.joinToString(" | ")}")
+            }
+        }
+
+        // 打印列表信息
+        val allLists = todoListManager.getAllLists()
+        allLists.forEach { list ->
+            val listFile = File(todoListsDir, list.fileName)
+            val exists = listFile.exists()
+            val size = if (exists) listFile.length() else 0
+            Log.d(TAG, "列表: ${list.name}, 文件: ${list.fileName}, 存在: $exists, 大小: $size, 选中: ${list.isSelected}")
+        }
+
+        Log.d(TAG, "当前内存待办数: ${todos.size}")
     }
 }

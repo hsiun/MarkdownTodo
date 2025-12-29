@@ -134,30 +134,47 @@ class TodoAdapter(
             isUpdating = true
 
             try {
-                // 记录原始状态，用于回滚
-                val originalChecked = todo.isCompleted
+                // 使用当前 position 从 filteredTodos 获取 todo
+                val currentPosition = holder.bindingAdapterPosition
+                if (currentPosition != RecyclerView.NO_POSITION && currentPosition < filteredTodos.size) {
+                    val currentTodo = filteredTodos[currentPosition]
+                    // 记录原始状态，用于回滚
+                    val originalChecked = todo.isCompleted
 
-                // 如果状态没有变化，直接返回
-                if (isChecked == originalChecked) {
-                    isUpdating = false
-                    return@setOnCheckedChangeListener
+                    // 如果状态没有变化，直接返回
+                    if (isChecked == originalChecked) {
+                        isUpdating = false
+                        return@setOnCheckedChangeListener
+                    }
+
+                    Log.d(
+                        "TodoAdapter",
+                        "待办状态改变: ID=${todo.id}, 标题='${todo.title}', 新状态=$isChecked"
+                    )
+
+                    // 立即更新视觉反馈
+                    if (isChecked) {
+                        holder.titleText.paintFlags = Paint.STRIKE_THRU_TEXT_FLAG
+                        holder.titleText.setTextColor(
+                            ContextCompat.getColor(
+                                holder.itemView.context,
+                                android.R.color.darker_gray
+                            )
+                        )
+                    } else {
+                        holder.titleText.paintFlags = 0
+                        holder.titleText.setTextColor(
+                            ContextCompat.getColor(
+                                holder.itemView.context,
+                                android.R.color.black
+                            )
+                        )
+                    }
+
+                    // 触发外部回调，让TodoManager处理状态切换和数据更新
+                    val updatedTodo = todo.copy(isCompleted = isChecked)
+                    onTodoChanged(updatedTodo)
                 }
-
-                Log.d("TodoAdapter", "待办状态改变: ID=${todo.id}, 标题='${todo.title}', 新状态=$isChecked")
-
-                // 立即更新视觉反馈
-                if (isChecked) {
-                    holder.titleText.paintFlags = Paint.STRIKE_THRU_TEXT_FLAG
-                    holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
-                } else {
-                    holder.titleText.paintFlags = 0
-                    holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
-                }
-
-                // 触发外部回调，让TodoManager处理状态切换和数据更新
-                val updatedTodo = todo.copy(isCompleted = isChecked)
-                onTodoChanged(updatedTodo)
-
                 // 延迟一段时间后重置更新标记
                 holder.itemView.postDelayed({
                     isUpdating = false

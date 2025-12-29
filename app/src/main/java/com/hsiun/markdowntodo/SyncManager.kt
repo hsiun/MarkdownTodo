@@ -549,7 +549,37 @@ class SyncManager(
         }
         return 0L
     }
+    /**
+     * 自动推送列表元数据变更
+     */
+    fun autoPushTodoLists(operation: String) {
+        if (!::gitManager.isInitialized) {
+            return
+        }
 
+        syncScope.launch {
+            try {
+                // 先将当前应用数据保存到Git目录
+                saveCurrentDataToGit()
+
+                // 推送
+                val commitMessage = "$operation 列表 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
+
+                gitManager.commitAndPush(
+                    commitMessage = commitMessage,
+                    filePatterns = listOf("$DIR_TODO_LISTS/$FILE_METADATA"), // 只推送元数据文件
+                    onSuccess = {
+                        syncListener?.onSyncStatusChanged("列表元数据推送成功")
+                    },
+                    onError = { error ->
+                        syncListener?.onSyncError("列表元数据推送失败: $error")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "自动推送列表元数据异常", e)
+            }
+        }
+    }
     /**
      * 合并元数据JSON
      */
@@ -807,7 +837,11 @@ class SyncManager(
             if (!todoListsDir.exists()) {
                 todoListsDir.mkdirs()
             }
-
+            // 重要：确保保存最新的列表选中状态
+            Log.d(TAG, "保存列表元数据，共 ${todoLists.size} 个列表")
+            todoLists.forEach { list ->
+                Log.d(TAG, "列表: ${list.name}, isSelected: ${list.isSelected}")
+            }
             // 保存元数据
             val metadataFile = File(todoListsDir, FILE_METADATA)
             saveTodoListsMetadata(todoLists, metadataFile)
