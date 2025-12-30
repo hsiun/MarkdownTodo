@@ -38,7 +38,13 @@ class NoteFragment : Fragment(), NoteManager.NoteChangeListener {
         adapter = NoteAdapter(
             mutableListOf(),
             onNoteClicked = { note ->
-                mainActivity.noteDialogManager.showEditNoteDialog(note, mainActivity)
+                // 启动编辑页面
+                val intent = android.content.Intent(requireContext(), NoteEditActivity::class.java).apply {
+                    putExtra("uuid", note.uuid)
+                    putExtra("noteId", note.id)
+                    putExtra("isNewNote", false)
+                }
+                startActivity(intent)
             },
             onNoteDeleted = { note ->
                 mainActivity.showDeleteNoteConfirmationDialog(note)

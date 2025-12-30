@@ -10,7 +10,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 class NoteAdapter(
     private var notes: MutableList<NoteItem>,
@@ -37,6 +38,7 @@ class NoteAdapter(
     }
 
     // NoteAdapter.kt
+    // 确保onBindViewHolder中的点击事件设置正确
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         if (position < 0 || position >= notes.size) {
             Log.e(TAG, "无效的position: $position, 列表大小: ${notes.size}")
@@ -44,11 +46,12 @@ class NoteAdapter(
         }
 
         val note = notes[position]
+        Log.d(TAG, "绑定笔记: ID=${note.id}, 标题='${note.title}'")
 
         // 设置标题
         holder.titleText.text = note.title
 
-        // 设置内容预览（直接使用纯内容，不需要清理）
+        // 设置内容预览
         val preview = if (note.content.length > 100) {
             note.content.substring(0, 100) + "..."
         } else {
@@ -70,8 +73,9 @@ class NoteAdapter(
         }
         holder.dateText.text = createdAt
 
-        // 设置点击事件
+        // 设置点击事件 - 确保点击整个容器
         holder.itemContainer.setOnClickListener {
+            Log.d(TAG, "点击笔记项目: ID=${note.id}")
             onNoteClicked(note)
         }
 

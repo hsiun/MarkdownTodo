@@ -70,6 +70,19 @@ class MainActivity : AppCompatActivity(),
         fun getInstance(): MainActivity? = instance
     }
 
+    fun openNoteEditPage(note: NoteItem? = null, isNewNote: Boolean = false) {
+        val intent = Intent(this, NoteEditActivity::class.java).apply {
+            if (note != null) {
+                putExtra("noteId", note.id)
+                putExtra("uuid", note.uuid)
+                putExtra("isNewNote", false)
+            } else if (isNewNote) {
+                putExtra("isNewNote", true)
+            }
+        }
+        startActivity(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -290,8 +303,7 @@ class MainActivity : AppCompatActivity(),
                 }
                 1 -> {
                     // 添加笔记
-                    noteDialogManager.showAddNoteDialog(this)
-                }
+                    openNoteEditPage(isNewNote = true)                }
             }
         }
     }
