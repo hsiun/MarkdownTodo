@@ -24,40 +24,13 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- 编辑模式的标题输入 -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/noteTitleInputLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="标题"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/noteTitleEditText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textCapSentences"
-                android:maxLines="1" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="内容"
-            android:textSize="14sp"
-            android:textColor="#666666"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp"
-            android:visibility="gone" />
-
         <!-- 查看模式的内容显示（可滚动，点击进入编辑，包含标题和内容） -->
         <androidx.core.widget.NestedScrollView
             android:id="@+id/noteContentScrollView"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="@drawable/edittext_border"
+            android:background="@android:color/transparent"
             android:padding="12dp"
             android:clickable="true"
             android:focusable="true"
@@ -76,7 +49,9 @@
                     android:textSize="24sp"
                     android:textColor="#000000"
                     android:textStyle="bold"
-                    android:paddingBottom="16dp" />
+                    android:paddingBottom="16dp"
+                    android:clickable="true"
+                    android:focusable="true" />
 
                 <!-- 内容显示 -->
                 <TextView
@@ -85,26 +60,134 @@
                     android:layout_height="wrap_content"
                     android:textSize="16sp"
                     android:textColor="#000000"
-                    android:lineSpacingExtra="4dp" />
+                    android:lineSpacingExtra="4dp"
+                    android:clickable="true"
+                    android:focusable="true" />
 
             </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>
 
-        <!-- 编辑模式的内容输入 -->
-        <EditText
-            android:id="@+id/noteContentEditText"
+        <!-- 编辑模式的容器（包含标题和内容，都在一个框内） -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/noteEditScrollView"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:hint="输入笔记内容（支持Markdown）"
-            android:inputType="textMultiLine"
-            android:gravity="top"
             android:background="@drawable/edittext_border"
             android:padding="12dp"
             android:scrollbars="vertical"
-            android:textSize="16sp"
-            android:visibility="gone" />
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- 编辑模式的标题输入 -->
+                <EditText
+                    android:id="@+id/noteTitleEditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="标题"
+                    android:inputType="textCapSentences"
+                    android:textSize="24sp"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:background="@android:color/transparent"
+                    android:paddingBottom="16dp"
+                    android:maxLines="1" />
+
+                <!-- 编辑模式的内容输入 -->
+                <EditText
+                    android:id="@+id/noteContentEditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="输入笔记内容（支持Markdown）"
+                    android:inputType="textMultiLine"
+                    android:gravity="top"
+                    android:background="@android:color/transparent"
+                    android:textSize="16sp"
+                    android:lineSpacingExtra="4dp"
+                    android:minHeight="200dp" />
+
+            </LinearLayout>
+
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- Markdown 快捷按钮区域 -->
+        <LinearLayout
+            android:id="@+id/markdownButtonsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <ImageButton
+                android:id="@+id/btnBold"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="粗体"
+                android:src="@drawable/ic_bold"
+                app:tint="#FF9800"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/btnItalic"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="斜体"
+                android:src="@drawable/ic_italic"
+                app:tint="#FF9800"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/btnCode"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="代码"
+                android:src="@drawable/ic_code"
+                app:tint="#FF9800"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/btnLink"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="链接"
+                android:src="@drawable/ic_link"
+                app:tint="#FF9800"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/btnList"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="列表"
+                android:src="@drawable/ic_list"
+                app:tint="#FF9800"
+                android:padding="8dp" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/hintTextView"
@@ -118,36 +201,5 @@
 
     </LinearLayout>
 
-    <!-- 底部按钮区域 -->
-    <LinearLayout
-        android:id="@+id/buttonContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#F5F5F5"
-        android:padding="16dp"
-        android:visibility="gone">
-
-        <Button
-            android:id="@+id/btnCancel"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:text="取消"
-            android:textColor="#666666"
-            android:background="@drawable/button_border"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btnSave"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:text="保存"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#865EDC"
-            android:background="@drawable/button_rounded" />
-
-    </LinearLayout>
 
 </LinearLayout>

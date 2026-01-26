@@ -30,23 +30,14 @@
     </LinearLayout>
 
     <TextView
-        android:id="@+id/noteContentPreviewText"
+        android:id="@+id/noteDateAndPreviewText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="笔记内容预览..."
-        android:textSize="14sp"
-        android:textColor="#666666"
-        android:maxLines="2"
-        android:ellipsize="end" />
-
-    <TextView
-        android:id="@+id/noteDateText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="2023-01-01"
+        android:text="2023-01-01 | 笔记内容预览..."
         android:textSize="12sp"
-        android:textColor="#999999" />
+        android:textColor="#999999"
+        android:maxLines="1"
+        android:ellipsize="end" />
 
 </LinearLayout>

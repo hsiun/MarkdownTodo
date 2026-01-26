@@ -3,11 +3,18 @@ package com.hsiun.markdowntodo
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.hsiun.markdowntodo.databinding.ActivityNoteEditBinding
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.ext.tasklist.TaskListPlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -26,6 +33,13 @@ class NoteEditActivity : AppCompatActivity() {
     private var isToolbarVisible = true
     private var isScrollListenerEnabled = false
     private var lastScrollY = 0
+    
+    // Markdown 渲染器
+    private lateinit var markwon: Markwon
+    
+    // 用于撤销的原始内容
+    private var originalTitle: String = ""
+    private var originalContent: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +87,12 @@ class NoteEditActivity : AppCompatActivity() {
 
         Log.d("NoteEditActivity", "接收参数: uuid=$uuid, isNewNote=$isNewNote")
 
+        // 初始化 Markdown 渲染器（必须在 enterViewMode 之前）
+        initMarkwon()
+        
+        // 设置 Markdown 快捷按钮
+        setupMarkdownButtons()
+
         if (isNewNote) {
             // 新建笔记，直接进入编辑模式
             isEditMode = true
@@ -100,9 +120,18 @@ class NoteEditActivity : AppCompatActivity() {
             finish()
             return
         }
-
-        // 设置按钮点击事件
-        setupButtons()
+    }
+    
+    /**
+     * 初始化 Markdown 渲染器
+     */
+    private fun initMarkwon() {
+        markwon = Markwon.builder(this)
+            .usePlugin(StrikethroughPlugin.create())  // 删除线支持
+            .usePlugin(TablePlugin.create(this))       // 表格支持
+            .usePlugin(TaskListPlugin.create(this))   // 任务列表支持
+            .usePlugin(LinkifyPlugin.create())        // 链接自动识别
+            .build()
     }
     
     /**
@@ -122,13 +151,18 @@ class NoteEditActivity : AppCompatActivity() {
             binding.noteTitleTextView.text = note.title
             
             binding.noteContentScrollView.visibility = View.VISIBLE
-            binding.noteContentTextView.text = note.content
+            // 移除边框（查看模式下不显示边框）
+            binding.noteContentScrollView.background = null
+            // 使用 Markwon 渲染 Markdown 内容
+            markwon.setMarkdown(binding.noteContentTextView, note.content)
             
             // 隐藏编辑模式的视图
-            binding.noteTitleInputLayout.visibility = View.GONE
-            binding.noteContentEditText.visibility = View.GONE
+            binding.noteEditScrollView.visibility = View.GONE
+            binding.markdownButtonsContainer.visibility = View.GONE
             binding.hintTextView.visibility = View.GONE
-            binding.buttonContainer.visibility = View.GONE
+            
+            // 隐藏工具栏菜单（查看模式下不显示）
+            invalidateOptionsMenu()
             
             // 重置滚动位置
             binding.noteContentScrollView.scrollTo(0, 0)
@@ -149,15 +183,18 @@ class NoteEditActivity : AppCompatActivity() {
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val deltaY = kotlin.math.abs(event.y - touchStartY)
-                        if (deltaY > 10) { // 如果移动超过10像素，认为是滑动
+                        // 提高阈值到30像素，只有明显滑动才认为是滚动
+                        if (deltaY > 30) {
                             isScrolling = true
                         }
-                        
-                        // 不再需要隐藏工具栏，工具栏始终显示
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (!isScrolling) {
-                            // 如果没有滑动，认为是点击，进入编辑模式
+                        // 如果移动距离小于30像素，且滚动位置没有明显变化，认为是点击
+                        val deltaY = kotlin.math.abs(event.y - touchStartY)
+                        val scrollDelta = kotlin.math.abs(binding.noteContentScrollView.scrollY - lastScrollY)
+                        
+                        if (deltaY <= 30 && scrollDelta <= 10) {
+                            // 明显的点击操作，进入编辑模式
                             enterEditMode()
                         }
                         // 重置状态
@@ -167,8 +204,14 @@ class NoteEditActivity : AppCompatActivity() {
                 false // 返回false，让ScrollView继续处理滑动事件
             }
             
-            // 标题和内容都在同一个ScrollView中，点击ScrollView即可进入编辑模式
-            // 不需要单独设置标题点击事件
+            // 标题和内容都可以点击进入编辑模式
+            binding.noteTitleTextView.setOnClickListener {
+                enterEditMode()
+            }
+            
+            binding.noteContentTextView.setOnClickListener {
+                enterEditMode()
+            }
             
         supportActionBar?.title = "查看笔记"
         binding.toolbar.title = "查看笔记"
@@ -230,20 +273,27 @@ class NoteEditActivity : AppCompatActivity() {
         isScrollListenerEnabled = false
         
         // 隐藏查看模式的视图
-        binding.noteTitleTextView.visibility = View.GONE
         binding.noteContentScrollView.visibility = View.GONE
         
         // 显示编辑模式的视图
-        binding.noteTitleInputLayout.visibility = View.VISIBLE
-        binding.noteContentEditText.visibility = View.VISIBLE
+        binding.noteEditScrollView.visibility = View.VISIBLE
+        binding.markdownButtonsContainer.visibility = View.VISIBLE
         binding.hintTextView.visibility = View.VISIBLE
-        binding.buttonContainer.visibility = View.VISIBLE
         
-        // 填充数据
+        // 填充数据并保存原始内容用于撤销
         originalNote?.let { note ->
+            originalTitle = note.title
+            originalContent = note.content
             binding.noteTitleEditText.setText(note.title)
             binding.noteContentEditText.setText(note.content)
+        } ?: run {
+            // 新建笔记时，原始内容为空
+            originalTitle = ""
+            originalContent = ""
         }
+        
+        // 显示工具栏菜单（编辑模式下显示）
+        invalidateOptionsMenu()
         
         supportActionBar?.title = if (isNewNote) "新建笔记" else "编辑笔记"
         binding.toolbar.title = if (isNewNote) "新建笔记" else "编辑笔记"
@@ -252,15 +302,91 @@ class NoteEditActivity : AppCompatActivity() {
         binding.noteContentScrollView.setOnTouchListener(null)
     }
 
-    private fun setupButtons() {
-        // 保存按钮
-        binding.btnSave.setOnClickListener {
-            saveNote()
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_note_edit, menu)
+        // 只在编辑模式下显示菜单
+        menu.findItem(R.id.action_spacer)?.isVisible = isEditMode
+        menu.findItem(R.id.action_undo)?.isVisible = isEditMode
+        menu.findItem(R.id.action_save)?.isVisible = isEditMode
+        
+        return true
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_undo -> {
+                undoChanges()
+                true
+            }
+            R.id.action_save -> {
+                saveNote()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
-
-        // 取消按钮
-        binding.btnCancel.setOnClickListener {
-            onBackPressed()
+    }
+    
+    /**
+     * 撤销修改
+     */
+    private fun undoChanges() {
+        binding.noteTitleEditText.setText(originalTitle)
+        binding.noteContentEditText.setText(originalContent)
+        Toast.makeText(this, "已撤销修改", Toast.LENGTH_SHORT).show()
+    }
+    
+    /**
+     * 设置 Markdown 快捷按钮
+     */
+    private fun setupMarkdownButtons() {
+        // 粗体
+        binding.btnBold.setOnClickListener {
+            insertMarkdownTag("**", "**")
+        }
+        
+        // 斜体
+        binding.btnItalic.setOnClickListener {
+            insertMarkdownTag("*", "*")
+        }
+        
+        // 代码
+        binding.btnCode.setOnClickListener {
+            insertMarkdownTag("`", "`")
+        }
+        
+        // 链接
+        binding.btnLink.setOnClickListener {
+            insertMarkdownTag("[", "]()")
+        }
+        
+        // 列表
+        binding.btnList.setOnClickListener {
+            insertMarkdownTag("- ", "")
+        }
+    }
+    
+    /**
+     * 在光标位置插入 Markdown 标签
+     */
+    private fun insertMarkdownTag(before: String, after: String) {
+        val editText = binding.noteContentEditText
+        val start = editText.selectionStart
+        val end = editText.selectionEnd
+        val text = editText.text.toString()
+        
+        if (start == end) {
+            // 没有选中文本，在光标位置插入标签
+            val newText = text.substring(0, start) + before + after + text.substring(start)
+            editText.setText(newText)
+            // 将光标移动到标签中间
+            editText.setSelection(start + before.length)
+        } else {
+            // 有选中文本，用标签包裹选中的文本
+            val selectedText = text.substring(start, end)
+            val newText = text.substring(0, start) + before + selectedText + after + text.substring(end)
+            editText.setText(newText)
+            // 选中被包裹的文本
+            editText.setSelection(start + before.length, start + before.length + selectedText.length)
         }
     }
 

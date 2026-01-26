@@ -24,8 +24,7 @@ class NoteAdapter(
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val titleText: TextView = view.findViewById(R.id.noteTitleText)
-        val contentPreviewText: TextView = view.findViewById(R.id.noteContentPreviewText)
-        val dateText: TextView = view.findViewById(R.id.noteDateText)
+        val dateAndPreviewText: TextView = view.findViewById(R.id.noteDateAndPreviewText)
         val itemContainer: LinearLayout = view.findViewById(R.id.noteItemContainer)
     }
 
@@ -49,14 +48,6 @@ class NoteAdapter(
         // 设置标题
         holder.titleText.text = note.title
 
-        // 设置内容预览
-        val preview = if (note.content.length > 100) {
-            note.content.substring(0, 100) + "..."
-        } else {
-            note.content
-        }
-        holder.contentPreviewText.text = preview
-
         // 设置日期
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val createdAt = try {
@@ -69,7 +60,17 @@ class NoteAdapter(
         } catch (e: Exception) {
             note.createdAt
         }
-        holder.dateText.text = createdAt
+
+        // 设置内容预览（移除Markdown标记）
+        val cleanContent = removeMarkdown(note.content)
+        val preview = if (cleanContent.length > 50) {
+            cleanContent.substring(0, 50) + "..."
+        } else {
+            cleanContent
+        }
+
+        // 组合日期和内容预览，用 | 分隔
+        holder.dateAndPreviewText.text = "$createdAt | $preview"
 
         // 设置点击事件 - 确保点击整个容器
         holder.itemContainer.setOnClickListener {

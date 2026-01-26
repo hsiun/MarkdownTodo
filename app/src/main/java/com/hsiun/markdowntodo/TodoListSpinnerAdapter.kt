@@ -25,13 +25,13 @@ class TodoListSpinnerAdapter(
             // 如果是"新建"项
             textView.text = "+ 新建待办列表"
             textView.setTextColor(ContextCompat.getColor(context, R.color.button_fab))
-            textView.textSize = 16f
+            textView.textSize = 26f
         } else {
             val list = getItem(position)
             if (list != null) {
                 textView.text = list.getDisplayName()
                 textView.setTextColor(ContextCompat.getColor(context, android.R.color.black))
-                textView.textSize = 16f
+                textView.textSize = 26f
             }
         }
 

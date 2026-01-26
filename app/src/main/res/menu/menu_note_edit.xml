@@ -2,10 +2,25 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <!-- 占位符，用于向左移动图标 -->
+    <item
+        android:id="@+id/action_spacer"
+        android:title=""
+        app:actionLayout="@layout/menu_item_spacer"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_undo"
+        android:title="撤销"
+        android:icon="@drawable/ic_undo"
+        app:showAsAction="always"
+        app:iconTint="#000000" />
+
     <item
         android:id="@+id/action_save"
         android:title="保存"
         android:icon="@drawable/ic_save"
-        app:showAsAction="always" />
+        app:showAsAction="always"
+        app:iconTint="#000000" />
 
 </menu>
