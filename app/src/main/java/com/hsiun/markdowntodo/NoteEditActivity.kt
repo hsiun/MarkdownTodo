@@ -1,20 +1,36 @@
 package com.hsiun.markdowntodo
 
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.hsiun.markdowntodo.databinding.ActivityNoteEditBinding
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
+import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.ImageItem
+import io.noties.markwon.image.SchemeHandler
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStream
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -40,6 +56,44 @@ class NoteEditActivity : AppCompatActivity() {
     // 用于撤销的原始内容
     private var originalTitle: String = ""
     private var originalContent: String = ""
+    
+    // 图片相关
+    private var currentPhotoUri: Uri? = null
+    private val imagesDir: File by lazy {
+        val dir = File(filesDir, "images")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        dir
+    }
+    
+    // 图片选择器
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { handleImageUri(it) }
+    }
+    
+    // 相机拍照
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && currentPhotoUri != null) {
+            currentPhotoUri?.let { handleImageUri(it) }
+        }
+    }
+    
+    // 权限请求
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.all { it.value }
+        if (allGranted) {
+            showImageSourceDialog()
+        } else {
+            Toast.makeText(this, "需要权限才能添加图片", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,6 +185,49 @@ class NoteEditActivity : AppCompatActivity() {
             .usePlugin(TablePlugin.create(this))       // 表格支持
             .usePlugin(TaskListPlugin.create(this))   // 任务列表支持
             .usePlugin(LinkifyPlugin.create())        // 链接自动识别
+            .usePlugin(ImagesPlugin.create(object : ImagesPlugin.ImagesConfigure {
+                override fun configureImages(plugin: ImagesPlugin) {
+                    // 添加自定义的 file:// SchemeHandler 来确保能访问内部存储
+                    plugin.addSchemeHandler(object : SchemeHandler() {
+                        override fun handle(raw: String, uri: android.net.Uri): ImageItem {
+                            return try {
+                                // 移除 file:// 前缀
+                                val filePath = if (raw.startsWith("file://")) {
+                                    raw.substring(7)
+                                } else {
+                                    raw
+                                }
+                                
+                                val file = File(filePath)
+                                Log.d("NoteEditActivity", "尝试加载图片: $filePath, 存在: ${file.exists()}")
+                                
+                                if (file.exists() && file.canRead()) {
+                                    val inputStream = FileInputStream(file)
+                                    // 根据文件扩展名确定 content-type
+                                    val contentType = when (file.extension.lowercase()) {
+                                        "jpg", "jpeg" -> "image/jpeg"
+                                        "png" -> "image/png"
+                                        "gif" -> "image/gif"
+                                        "webp" -> "image/webp"
+                                        else -> "image/jpeg"
+                                    }
+                                    ImageItem.withDecodingNeeded(contentType, inputStream)
+                                } else {
+                                    Log.e("NoteEditActivity", "图片文件不存在或无法读取: $filePath")
+                                    throw java.io.FileNotFoundException("图片文件不存在: $filePath")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("NoteEditActivity", "加载图片失败: $raw", e)
+                                throw e
+                            }
+                        }
+
+                        override fun supportedSchemes(): Collection<String> {
+                            return listOf("file")
+                        }
+                    })
+                }
+            }))
             .build()
     }
     
@@ -363,6 +460,159 @@ class NoteEditActivity : AppCompatActivity() {
         binding.btnList.setOnClickListener {
             insertMarkdownTag("- ", "")
         }
+        
+        // 图片
+        binding.btnImage.setOnClickListener {
+            checkAndRequestPermissions()
+        }
+    }
+    
+    /**
+     * 检查并请求权限
+     */
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf<String>()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ 需要 READ_MEDIA_IMAGES
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_IMAGES) 
+                != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+            }
+        } else {
+            // Android 12 及以下需要 READ_EXTERNAL_STORAGE
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) 
+                != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+        
+        // 相机权限
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) 
+            != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(android.Manifest.permission.CAMERA)
+        }
+        
+        if (permissions.isEmpty()) {
+            showImageSourceDialog()
+        } else {
+            permissionLauncher.launch(permissions.toTypedArray())
+        }
+    }
+    
+    /**
+     * 显示图片来源选择对话框
+     */
+    private fun showImageSourceDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("选择图片")
+            .setItems(arrayOf("从相册选择", "拍照")) { _, which ->
+                when (which) {
+                    0 -> imagePickerLauncher.launch("image/*")
+                    1 -> takePhoto()
+                }
+            }
+            .show()
+    }
+    
+    /**
+     * 拍照
+     */
+    private fun takePhoto() {
+        val photoFile = File(imagesDir, "temp_photo_${System.currentTimeMillis()}.jpg")
+        val photoUri = FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            photoFile
+        )
+        currentPhotoUri = photoUri
+        cameraLauncher.launch(photoUri)
+    }
+    
+    /**
+     * 处理图片URI
+     */
+    private fun handleImageUri(uri: Uri) {
+        try {
+            // 复制图片到应用目录
+            val imageFile = saveImageToLocal(uri)
+            if (imageFile != null) {
+                // 生成相对路径（相对于应用目录）
+                val imagePath = "images/${imageFile.name}"
+                // 插入Markdown图片语法
+                insertImageMarkdown(imagePath)
+                Toast.makeText(this, "图片已添加", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "保存图片失败", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e("NoteEditActivity", "处理图片失败", e)
+            Toast.makeText(this, "处理图片失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * 保存图片到本地
+     */
+    private fun saveImageToLocal(uri: Uri): File? {
+        return try {
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+            
+            if (bitmap != null) {
+                // 压缩图片
+                val compressedBitmap = compressBitmap(bitmap)
+                val imageFile = File(imagesDir, "image_${System.currentTimeMillis()}.jpg")
+                val outputStream = FileOutputStream(imageFile)
+                compressedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+                outputStream.flush()
+                outputStream.close()
+                imageFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("NoteEditActivity", "保存图片失败", e)
+            null
+        }
+    }
+    
+    /**
+     * 压缩图片
+     */
+    private fun compressBitmap(bitmap: Bitmap): Bitmap {
+        val maxWidth = 1920
+        val maxHeight = 1920
+        
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        if (width <= maxWidth && height <= maxHeight) {
+            return bitmap
+        }
+        
+        val scale = minOf(maxWidth.toFloat() / width, maxHeight.toFloat() / height)
+        val newWidth = (width * scale).toInt()
+        val newHeight = (height * scale).toInt()
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+    
+    /**
+     * 插入图片Markdown语法
+     */
+    private fun insertImageMarkdown(imagePath: String) {
+        val editText = binding.noteContentEditText
+        val start = editText.selectionStart
+        val text = editText.text.toString()
+        // 使用file:// URI格式，Markwon的FileSchemeHandler可以处理
+        val imageFile = File(filesDir, imagePath)
+        val imageUri = "file://${imageFile.absolutePath}"
+        val imageMarkdown = "![图片]($imageUri)\n"
+        val newText = text.substring(0, start) + imageMarkdown + text.substring(start)
+        editText.setText(newText)
+        editText.setSelection(start + imageMarkdown.length)
     }
     
     /**
