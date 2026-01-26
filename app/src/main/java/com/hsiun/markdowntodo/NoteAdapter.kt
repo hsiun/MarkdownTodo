@@ -5,7 +5,6 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -27,7 +26,6 @@ class NoteAdapter(
         val titleText: TextView = view.findViewById(R.id.noteTitleText)
         val contentPreviewText: TextView = view.findViewById(R.id.noteContentPreviewText)
         val dateText: TextView = view.findViewById(R.id.noteDateText)
-        val deleteButton: ImageButton = view.findViewById(R.id.noteDeleteButton)
         val itemContainer: LinearLayout = view.findViewById(R.id.noteItemContainer)
     }
 
@@ -78,11 +76,6 @@ class NoteAdapter(
             Log.d(TAG, "点击笔记项目: UUID=${note.uuid}")
             onNoteClicked(note)
         }
-
-        // 设置删除按钮事件
-        holder.deleteButton.setOnClickListener {
-            onNoteDeleted(note)
-        }
     }
 
     private fun removeMarkdown(text: String): String {
@@ -107,6 +100,10 @@ class NoteAdapter(
         } else {
             null
         }
+    }
+    
+    fun getNoteAtPosition(position: Int): NoteItem? {
+        return getItemAtPosition(position)
     }
 
     fun updateNotes(newNotes: List<NoteItem>) {

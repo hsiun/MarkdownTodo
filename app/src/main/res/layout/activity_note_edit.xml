@@ -11,7 +11,9 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="#FFFFFF"
+        android:elevation="0dp"
         app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationIconTint="#000000"
         app:title="编辑笔记"
         app:titleTextColor="#000000" />
 
@@ -22,7 +24,9 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- 编辑模式的标题输入 -->
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/noteTitleInputLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="标题"
@@ -44,8 +48,50 @@
             android:textSize="14sp"
             android:textColor="#666666"
             android:layout_marginTop="24dp"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
 
+        <!-- 查看模式的内容显示（可滚动，点击进入编辑，包含标题和内容） -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/noteContentScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/edittext_border"
+            android:padding="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- 标题显示 -->
+                <TextView
+                    android:id="@+id/noteTitleTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="24sp"
+                    android:textColor="#000000"
+                    android:textStyle="bold"
+                    android:paddingBottom="16dp" />
+
+                <!-- 内容显示 -->
+                <TextView
+                    android:id="@+id/noteContentTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textColor="#000000"
+                    android:lineSpacingExtra="4dp" />
+
+            </LinearLayout>
+
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- 编辑模式的内容输入 -->
         <EditText
             android:id="@+id/noteContentEditText"
             android:layout_width="match_parent"
@@ -57,25 +103,30 @@
             android:background="@drawable/edittext_border"
             android:padding="12dp"
             android:scrollbars="vertical"
-            android:textSize="16sp" />
+            android:textSize="16sp"
+            android:visibility="gone" />
 
         <TextView
+            android:id="@+id/hintTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="提示：支持Markdown语法"
             android:textSize="12sp"
             android:textColor="#999999"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
 
     </LinearLayout>
 
-    <!-- 底部保存按钮 -->
+    <!-- 底部按钮区域 -->
     <LinearLayout
+        android:id="@+id/buttonContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:background="#F5F5F5"
-        android:padding="16dp">
+        android:padding="16dp"
+        android:visibility="gone">
 
         <Button
             android:id="@+id/btnCancel"
