@@ -196,7 +196,14 @@ class GitManager(
                                     return@synchronized Pair(true, "没有需要提交的文件")
                                 }
 
-                                // 添加所有指定的文件模式
+                                // 先检查当前状态，看看有哪些删除的文件
+                                val statusBefore = git.status().call()
+                                val removedBefore = statusBefore.removed.toSet()
+                                if (removedBefore.isNotEmpty()) {
+                                    Log.d(TAG, "检测到已删除的文件（在添加前）: ${removedBefore.joinToString(", ")}")
+                                }
+
+                                // 添加所有指定的文件模式（包括新增、修改）
                                 filePatterns.forEach { pattern ->
                                     try {
                                         git.add()
@@ -207,12 +214,43 @@ class GitManager(
                                         Log.w(TAG, "添加文件模式 $pattern 失败: ${e.message}")
                                     }
                                 }
+                                
+                                // 对于目录模式，需要显式添加所有更改（包括删除）
+                                // Git的add()对于目录会自动检测删除，但为了确保，我们使用setUpdate(true)
+                                filePatterns.forEach { pattern ->
+                                    if (pattern.endsWith("/")) {
+                                        try {
+                                            // 使用setUpdate(true)来更新已删除的文件
+                                            git.add()
+                                                .addFilepattern(pattern)
+                                                .setUpdate(true)
+                                                .call()
+                                            Log.d(TAG, "已更新目录模式（包括删除）: $pattern")
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "更新目录模式 $pattern 失败: ${e.message}")
+                                        }
+                                    }
+                                }
 
                                 // 检查是否有需要提交的更改
                                 val status = git.status().call()
                                 if (status.isClean) {
                                     Log.d(TAG, "没有需要提交的更改")
                                     return@synchronized Pair(true, "没有需要提交的更改")
+                                }
+                                
+                                // 记录所有更改（包括删除）
+                                val removedFiles = status.removed
+                                if (removedFiles.isNotEmpty()) {
+                                    Log.d(TAG, "检测到删除的文件: ${removedFiles.joinToString(", ")}")
+                                }
+                                val addedFiles = status.added
+                                if (addedFiles.isNotEmpty()) {
+                                    Log.d(TAG, "检测到新增的文件: ${addedFiles.joinToString(", ")}")
+                                }
+                                val modifiedFiles = status.modified
+                                if (modifiedFiles.isNotEmpty()) {
+                                    Log.d(TAG, "检测到修改的文件: ${modifiedFiles.joinToString(", ")}")
                                 }
 
                                 // 提交

@@ -114,12 +114,169 @@ class SyncManager(
     }
 
     /**
+     * 列出远程仓库中的笔记文件（通过Git ls-tree命令）
+     */
+    private fun listRemoteNoteFiles(): List<String> {
+        return try {
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val gitDir = File(repoDir, ".git")
+            if (!gitDir.exists()) {
+                Log.w(TAG, "Git目录不存在，无法列出远程文件")
+                return emptyList()
+            }
+            
+            val repository = org.eclipse.jgit.storage.file.FileRepositoryBuilder()
+                .setGitDir(gitDir)
+                .build()
+            
+            repository.use { repo ->
+                // 尝试多个可能的分支名称
+                val possibleBranches = listOf("main", "master", "origin/main", "origin/master")
+                var ref: org.eclipse.jgit.lib.Ref? = null
+                var branchName = ""
+                
+                for (branch in possibleBranches) {
+                    ref = repo.findRef("refs/remotes/origin/$branch") 
+                        ?: repo.findRef("refs/heads/$branch")
+                        ?: repo.findRef("refs/remotes/$branch")
+                    if (ref != null) {
+                        branchName = branch
+                        Log.d(TAG, "找到分支引用: $branch")
+                        break
+                    }
+                }
+                
+                // 如果还是找不到，尝试使用HEAD
+                if (ref == null) {
+                    ref = repo.findRef("HEAD")
+                    if (ref != null) {
+                        Log.d(TAG, "使用HEAD引用")
+                    }
+                }
+                
+                if (ref == null) {
+                    Log.w(TAG, "无法找到任何分支引用")
+                    return emptyList()
+                }
+                
+                // 获取ref指向的对象
+                val objectId = ref.objectId
+                if (objectId == null) {
+                    Log.w(TAG, "引用没有对象ID")
+                    return emptyList()
+                }
+                
+                // 解析对象，如果是commit，需要获取其tree
+                val objectReader = repo.newObjectReader()
+                val objectLoader = objectReader.open(objectId)
+                val treeId = if (objectLoader.type == org.eclipse.jgit.lib.Constants.OBJ_COMMIT) {
+                    // 如果是commit对象，需要解析出tree对象
+                    val commit = org.eclipse.jgit.revwalk.RevWalk(repo).parseCommit(objectId)
+                    commit.tree.id
+                } else if (objectLoader.type == org.eclipse.jgit.lib.Constants.OBJ_TREE) {
+                    // 如果已经是tree对象，直接使用
+                    objectId
+                } else {
+                    Log.w(TAG, "引用指向的对象类型不支持: ${objectLoader.type}")
+                    return emptyList()
+                }
+                
+                // 使用ls-tree列出远程分支的文件
+                val remoteFiles = mutableListOf<String>()
+                org.eclipse.jgit.treewalk.TreeWalk(repo).use { treeWalk ->
+                    treeWalk.reset(treeId)
+                    treeWalk.isRecursive = true
+                    
+                    while (treeWalk.next()) {
+                        val path = treeWalk.pathString
+                        if (path.startsWith("$DIR_NOTES/") && path.endsWith(".md")) {
+                            val fileName = path.substringAfter("$DIR_NOTES/")
+                            remoteFiles.add(fileName)
+                            Log.d(TAG, "远程文件: $fileName (完整路径: $path)")
+                        }
+                    }
+                }
+
+                
+                Log.d(TAG, "远程仓库中的笔记文件数量: ${remoteFiles.size}")
+                remoteFiles
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "列出远程文件失败", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * 强制checkout所有文件到工作目录
+     */
+    private fun forceCheckoutFiles() {
+        try {
+            if (!::gitManager.isInitialized) {
+                Log.w(TAG, "GitManager未初始化，无法执行checkout")
+                return
+            }
+            
+            val repoDir = File(context.filesDir, GIT_REPO_DIR)
+            val repository = org.eclipse.jgit.storage.file.FileRepositoryBuilder()
+                .setGitDir(File(repoDir, ".git"))
+                .build()
+            
+            repository.use { repo ->
+                org.eclipse.jgit.api.Git(repo).use { git ->
+                    Log.d(TAG, "执行强制checkout...")
+                    // 使用reset --hard来确保工作目录与HEAD一致
+                    git.reset()
+                        .setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD)
+                        .setRef("HEAD")
+                        .call()
+                    Log.d(TAG, "强制checkout完成")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "强制checkout失败", e)
+            throw e
+        }
+    }
+    
+    /**
+     * 列出本地目录中的所有文件
+     */
+    private fun listLocalFiles(directory: File, description: String): List<String> {
+        return try {
+            if (!directory.exists() || !directory.isDirectory) {
+                Log.w(TAG, "$description: 目录不存在或不是目录: ${directory.absolutePath}")
+                return emptyList()
+            }
+            
+            val allFiles = directory.listFiles() ?: emptyArray()
+            val mdFiles = allFiles.filter { file ->
+                file.isFile && file.name.endsWith(".md", ignoreCase = true)
+            }.map { it.name }
+            
+            Log.d(TAG, "$description: 本地文件总数=${allFiles.size}, .md文件数=${mdFiles.size}")
+            mdFiles.forEach { fileName ->
+                Log.d(TAG, "$description: 本地文件: $fileName")
+            }
+            mdFiles
+        } catch (e: Exception) {
+            Log.e(TAG, "$description: 列出本地文件失败", e)
+            emptyList()
+        }
+    }
+
+    /**
      * 完整的同步流程
      */
     private suspend fun fullSyncFlow() {
         val repoDir = File(context.filesDir, GIT_REPO_DIR)
         val gitConfig = File(repoDir, ".git/config")
+        val notesDir = File(repoDir, DIR_NOTES)
 
+        // 0. 拉取前，列出本地文件
+        Log.d(TAG, "========== 同步开始：文件对比分析 ==========")
+        val localFilesBeforePull = listLocalFiles(notesDir, "拉取前本地")
+        
         // 1. 检查Git仓库是否存在，不存在则初始化并拉取
         if (!gitConfig.exists()) {
             Log.d(TAG, "Git仓库不存在，初始化仓库")
@@ -127,8 +284,77 @@ class SyncManager(
             return
         }
 
-        // 2. 先拉取远程更新（让Git自动合并）
+        // 1.5. 先保存当前数据到Git目录（包括删除操作），然后推送到远程
+        Log.d(TAG, "先保存当前数据到Git目录（包括删除操作）...")
+        syncListener?.onSyncProgress("正在保存本地更改...")
+        saveCurrentDataToGit()
+        
+        // 1.6. 推送本地更改（包括删除操作）到远程，确保删除操作先完成
+        Log.d(TAG, "推送本地更改（包括删除操作）到远程...")
+        syncListener?.onSyncProgress("正在推送本地更改...")
+        pushToRemote()
+
+        // 1.6. 尝试列出远程文件（在拉取前）
+        val remoteFiles = listRemoteNoteFiles()
+        Log.d(TAG, "远程仓库中的笔记文件: ${remoteFiles.size} 个")
+        remoteFiles.forEach { file ->
+            Log.d(TAG, "远程文件: $file")
+        }
+
+            // 2. 再拉取远程更新（让Git自动合并）
+        syncListener?.onSyncProgress("正在拉取远程更新...")
         val pullResult = pullWithGitMerge()
+
+        // 2.5. 拉取后立即检查Git目录中的文件
+        var localFilesAfterPull = listLocalFiles(notesDir, "拉取后本地")
+        
+        // 对比分析
+        Log.d(TAG, "========== 文件对比分析 ==========")
+        Log.d(TAG, "远程文件数量: ${remoteFiles.size}")
+        Log.d(TAG, "拉取前本地文件数量: ${localFilesBeforePull.size}")
+        Log.d(TAG, "拉取后本地文件数量: ${localFilesAfterPull.size}")
+        
+        // 找出差异（remoteFiles现在只包含文件名，不包含路径）
+        val missingInLocal = remoteFiles.filter { fileName ->
+            !localFilesAfterPull.contains(fileName)
+        }
+        val extraInLocal = localFilesAfterPull.filter { fileName ->
+            !remoteFiles.contains(fileName)
+        }
+        
+        if (missingInLocal.isNotEmpty()) {
+            Log.w(TAG, "本地缺失的文件 (${missingInLocal.size} 个): ${missingInLocal.joinToString(", ")}")
+            
+            // 如果拉取后文件数量不对，尝试强制checkout
+            if (pullResult is SyncPullResult.Success && missingInLocal.isNotEmpty()) {
+                Log.w(TAG, "检测到文件缺失，尝试强制checkout...")
+                try {
+                    forceCheckoutFiles()
+                    // 重新检查文件
+                    localFilesAfterPull = listLocalFiles(notesDir, "强制checkout后本地")
+                    Log.d(TAG, "强制checkout后本地文件数量: ${localFilesAfterPull.size}")
+                    
+                    // 再次检查缺失的文件
+                    val stillMissing = remoteFiles.filter { fileName ->
+                        !localFilesAfterPull.contains(fileName)
+                    }
+                    if (stillMissing.isNotEmpty()) {
+                        Log.w(TAG, "强制checkout后仍缺失的文件: ${stillMissing.joinToString(", ")}")
+                    } else {
+                        Log.d(TAG, "✓ 强制checkout后文件已完整")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "强制checkout失败", e)
+                }
+            }
+        }
+        if (extraInLocal.isNotEmpty()) {
+            Log.w(TAG, "本地多余的文件 (${extraInLocal.size} 个): ${extraInLocal.joinToString(", ")}")
+        }
+        if (missingInLocal.isEmpty() && extraInLocal.isEmpty() && remoteFiles.size == localFilesAfterPull.size) {
+            Log.d(TAG, "✓ 文件数量一致")
+        }
+        Log.d(TAG, "=====================================")
 
         // 3. 处理拉取结果
         when (pullResult) {
@@ -148,7 +374,7 @@ class SyncManager(
             }
         }
 
-        // 4. 推送本地更改到远程
+        // 4. 再次推送本地更改到远程（拉取后可能有新的本地更改需要推送）
         pushToRemote()
 
         isSyncing = false
@@ -674,9 +900,41 @@ class SyncManager(
 
             // 3. 加载笔记数据
             val notesDir = File(repoDir, DIR_NOTES)
+            Log.d(TAG, "loadDataFromGitToMemory: 笔记目录路径: ${notesDir.absolutePath}, 存在: ${notesDir.exists()}")
             if (notesDir.exists()) {
+                // 在调用 readNotesFromDirectory 之前，先检查目录中的所有文件
+                val localFilesBeforeRead = listLocalFiles(notesDir, "读取笔记前本地")
+                
                 val notes = readNotesFromDirectory(notesDir)
+                Log.d(TAG, "loadDataFromGitToMemory: 从Git目录读取到 ${notes.size} 条笔记")
+                notes.forEachIndexed { index, note ->
+                    Log.d(TAG, "loadDataFromGitToMemory: 读取到的笔记 $index: UUID=${note.uuid}, 标题=${note.title}")
+                }
+                
+                // 对比分析：本地文件数量 vs 读取到的笔记数量
+                Log.d(TAG, "========== 读取笔记对比分析 ==========")
+                Log.d(TAG, "本地.md文件数量: ${localFilesBeforeRead.size}")
+                Log.d(TAG, "读取到的笔记数量: ${notes.size}")
+                if (localFilesBeforeRead.size != notes.size) {
+                    Log.w(TAG, "⚠️ 警告：本地文件数量(${localFilesBeforeRead.size})与读取到的笔记数量(${notes.size})不一致！")
+                    val readFileNames = notes.map { note ->
+                        // 尝试从noteFileMap获取文件名，或者根据标题推测
+                        note.title
+                    }
+                    val missingNotes = localFilesBeforeRead.filter { fileName ->
+                        !readFileNames.any { it in fileName || fileName.contains(it) }
+                    }
+                    if (missingNotes.isNotEmpty()) {
+                        Log.w(TAG, "未读取到的文件: ${missingNotes.joinToString(", ")}")
+                    }
+                } else {
+                    Log.d(TAG, "✓ 文件数量与笔记数量一致")
+                }
+                Log.d(TAG, "=====================================")
+                
                 noteManager.replaceAllNotes(notes)
+            } else {
+                Log.w(TAG, "loadDataFromGitToMemory: 笔记目录不存在: ${notesDir.absolutePath}")
             }
 
             // 4. 重新调度提醒
@@ -912,55 +1170,113 @@ class SyncManager(
     }
 
     /**
-     * 删除笔记（从Git目录）
+     * 删除笔记（从Git目录）- 同步版本，等待删除完成
+     */
+    suspend fun deleteNoteFromGitSync(note: NoteItem): Boolean {
+        return suspendCoroutine { continuation ->
+            if (!::gitManager.isInitialized) {
+                Log.w(TAG, "GitManager未初始化，无法删除Git中的笔记")
+                continuation.resume(false)
+                return@suspendCoroutine
+            }
+
+            syncScope.launch {
+                try {
+                    Log.d(TAG, "开始删除Git中的笔记: UUID=${note.uuid}, Title=${note.title}")
+                    
+                    // 先获取所有可能的文件名
+                    val noteDir = File(context.filesDir, "$GIT_REPO_DIR/$DIR_NOTES")
+                    if (!noteDir.exists()) {
+                        Log.w(TAG, "笔记目录不存在: ${noteDir.absolutePath}")
+                        continuation.resume(false)
+                        return@launch
+                    }
+                    
+                    val noteFiles = noteDir.listFiles { file ->
+                        file.isFile && file.name.endsWith(".md", ignoreCase = true)
+                    } ?: emptyArray()
+
+                    Log.d(TAG, "扫描到 ${noteFiles.size} 个笔记文件，查找UUID=${note.uuid}")
+                    
+                    var fileNameToDelete = ""
+                    for (file in noteFiles) {
+                        try {
+                            val content = file.readText()
+                            val fileNote = NoteItem.fromMarkdown(content)
+                            if (fileNote?.uuid == note.uuid) {
+                                fileNameToDelete = file.name
+                                Log.d(TAG, "找到要删除的文件: $fileNameToDelete")
+                                break
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "解析文件失败，跳过: ${file.name}", e)
+                            // 忽略解析失败的文件
+                        }
+                    }
+
+                    if (fileNameToDelete.isEmpty()) {
+                        // 如果找不到，尝试通过UUID查找
+                        for (file in noteFiles) {
+                            try {
+                                val content = file.readText()
+                                val fileNote = NoteItem.fromMarkdown(content)
+                                if (fileNote?.uuid == note.uuid) {
+                                    fileNameToDelete = file.name
+                                    Log.d(TAG, "通过UUID找到文件: $fileNameToDelete")
+                                    break
+                                }
+                            } catch (e: Exception) {
+                                // 忽略
+                            }
+                        }
+                    }
+
+                    if (fileNameToDelete.isNotEmpty()) {
+                        Log.d(TAG, "调用GitManager删除文件: $DIR_NOTES/$fileNameToDelete")
+                        
+                        // 先确保本地文件已删除（如果还存在）
+                        val localFile = File(noteDir, fileNameToDelete)
+                        if (localFile.exists()) {
+                            val localDeleted = localFile.delete()
+                            Log.d(TAG, "删除本地文件: $fileNameToDelete, 结果: $localDeleted")
+                        }
+                        
+                        gitManager.removeFile(
+                            filePattern = "$DIR_NOTES/$fileNameToDelete",
+                            commitMessage = "删除笔记: ${note.title}",
+                            onSuccess = {
+                                Log.d(TAG, "Git删除笔记成功: $fileNameToDelete")
+                                syncListener?.onSyncStatusChanged("删除同步成功")
+                                continuation.resume(true)
+                            },
+                            onError = { error ->
+                                Log.e(TAG, "Git删除笔记失败: $error")
+                                syncListener?.onSyncError("删除同步失败: $error")
+                                continuation.resume(false)
+                            }
+                        )
+                    } else {
+                        Log.w(TAG, "未找到要删除的笔记文件: UUID=${note.uuid}, Title=${note.title}")
+                        // 如果找不到文件，可能已经被删除了，返回true
+                        continuation.resume(true)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "删除笔记同步异常", e)
+                    syncListener?.onSyncError("删除同步异常: ${e.message}")
+                    continuation.resume(false)
+                }
+            }
+        }
+    }
+    
+    /**
+     * 删除笔记（从Git目录）- 异步版本（保持向后兼容）
      */
     fun deleteNoteFromGit(note: NoteItem) {
-        if (!::gitManager.isInitialized) {
-            return
-        }
-
         syncScope.launch {
-            try {
-                // 由于文件名现在是基于标题的，我们需要找到对应的文件名
-                // 注意：这里假设文件名是基于标题的，可能需要在NoteManager中提供一个获取文件名的方法
-                // 或者我们可以直接删除所有以该笔记ID开头的文件
-
-                // 先获取所有可能的文件名
-                val noteDir = File(context.filesDir, "$GIT_REPO_DIR/$DIR_NOTES")
-                val noteFiles = noteDir.listFiles { file ->
-                    file.isFile && file.name.endsWith(".md")
-                } ?: emptyArray()
-
-                var fileNameToDelete = ""
-                for (file in noteFiles) {
-                    try {
-                        val content = file.readText()
-                        val fileNote = NoteItem.fromMarkdown(content)
-                        if (fileNote?.uuid == note.uuid) {
-                            fileNameToDelete = file.name
-                            break
-                        }
-                    } catch (e: Exception) {
-                        // 忽略解析失败的文件
-                    }
-                }
-
-                if (fileNameToDelete.isNotEmpty()) {
-                    gitManager.removeFile(
-                        filePattern = "$DIR_NOTES/$fileNameToDelete",
-                        commitMessage = "删除笔记: ${note.title}",
-                        onSuccess = {
-                            syncListener?.onSyncStatusChanged("删除同步成功")
-                        },
-                        onError = { error ->
-                            syncListener?.onSyncError("删除同步失败: $error")
-                        }
-                    )
-                } else {
-                    Log.w(TAG, "未找到要删除的笔记文件: UUID=${note.uuid}, Title=${note.title}")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "删除笔记同步异常", e)
+            val success = deleteNoteFromGitSync(note)
+            if (!success) {
+                Log.w(TAG, "Git删除失败，但本地已删除，下次同步时可能恢复")
             }
         }
     }
@@ -1122,22 +1438,66 @@ class SyncManager(
      */
     private fun readNotesFromDirectory(directory: File): List<NoteItem> {
         return try {
-            val noteFiles = directory.listFiles { file ->
-                file.isFile && file.name.endsWith(".md")
-            } ?: emptyArray()
+            Log.d(TAG, "readNotesFromDirectory: 读取目录: ${directory.absolutePath}")
+            
+            if (!directory.exists() || !directory.isDirectory) {
+                Log.w(TAG, "readNotesFromDirectory: 目录不存在或不是目录: ${directory.absolutePath}")
+                return emptyList()
+            }
+            
+            // 列出目录中的所有文件（用于调试）
+            val allFiles = directory.listFiles() ?: emptyArray()
+            Log.d(TAG, "readNotesFromDirectory: 目录中的所有文件数量: ${allFiles.size}")
+            allFiles.forEach { file ->
+                Log.d(TAG, "readNotesFromDirectory: 目录中的文件: ${file.name}, 是文件: ${file.isFile}, 是目录: ${file.isDirectory}")
+            }
+            
+            // 手动过滤.md文件，确保读取所有文件
+            val noteFiles = allFiles.filter { file ->
+                file.isFile && file.name.endsWith(".md", ignoreCase = true)
+            }
+
+            Log.d(TAG, "readNotesFromDirectory: 找到 ${noteFiles.size} 个笔记文件")
+            noteFiles.forEach { file ->
+                Log.d(TAG, "readNotesFromDirectory: 笔记文件: ${file.name}, 大小: ${file.length()} 字节, 路径: ${file.absolutePath}")
+            }
 
             val notes = mutableListOf<NoteItem>()
+            val uuidSet = mutableSetOf<String>()
+            var successCount = 0
+            var failCount = 0
+            
             noteFiles.forEach { file ->
                 try {
                     val content = file.readText()
                     val note = NoteItem.fromMarkdown(content)
-                    note?.let { notes.add(it) }
+                    if (note != null) {
+                        // 检查重复UUID
+                        if (uuidSet.contains(note.uuid)) {
+                            Log.w(TAG, "readNotesFromDirectory: 发现重复UUID ${note.uuid} 在文件 ${file.name}，跳过")
+                        } else {
+                            uuidSet.add(note.uuid)
+                            notes.add(note)
+                            successCount++
+                            Log.d(TAG, "readNotesFromDirectory: 成功加载笔记 ${file.name}, UUID=${note.uuid}, 标题=${note.title}")
+                        }
+                    } else {
+                        Log.w(TAG, "readNotesFromDirectory: 文件解析返回null: ${file.name}")
+                        failCount++
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "读取笔记文件失败: ${file.name}", e)
+                    Log.e(TAG, "readNotesFromDirectory: 读取笔记文件失败: ${file.name}", e)
+                    failCount++
                 }
             }
 
-            notes.sortedBy { it.uuid }
+            Log.d(TAG, "readNotesFromDirectory: 成功=$successCount, 失败=$failCount, 最终笔记数=${notes.size}")
+            val sortedNotes = notes.sortedBy { it.uuid }  // 返回排序后的列表
+            Log.d(TAG, "readNotesFromDirectory: 返回排序后的笔记数量: ${sortedNotes.size}")
+            sortedNotes.forEachIndexed { index, note ->
+                Log.d(TAG, "readNotesFromDirectory: 返回笔记 $index: UUID=${note.uuid}, 标题=${note.title}")
+            }
+            sortedNotes
         } catch (e: Exception) {
             Log.e(TAG, "读取笔记目录失败", e)
             emptyList()

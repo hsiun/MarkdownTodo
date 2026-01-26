@@ -27,6 +27,9 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -601,8 +604,10 @@ class MainActivity : AppCompatActivity(),
             Log.d("MainActivity", message)
 
             // 重新加载数据
-            todoManager.loadCurrentListTodos()  // 改为这个
-            noteManager.loadAllNotes()
+            // 注意：笔记数据已经在同步流程中通过 replaceAllNotes 更新了，不需要再次调用 loadAllNotes
+            // loadAllNotes 会从本地目录读取，可能导致只读取到一个文件的问题
+            todoManager.loadCurrentListTodos()
+            // noteManager.loadAllNotes() // 已移除，因为同步流程中已经通过 replaceAllNotes 更新了笔记
             updatePageCounts()
         }
     }
@@ -619,8 +624,9 @@ class MainActivity : AppCompatActivity(),
                 Toast.makeText(this, "检测到同步冲突，已自动处理", Toast.LENGTH_LONG).show()
 
                 // 重新加载数据
+                // 注意：笔记数据已经在同步流程中通过 replaceAllNotes 更新了，不需要再次调用 loadAllNotes
                 todoManager.loadCurrentListTodos()
-                noteManager.loadAllNotes()
+                // noteManager.loadAllNotes() // 已移除，因为同步流程中已经通过 replaceAllNotes 更新了笔记
                 updatePageCounts()
             } else {
                 updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
@@ -665,40 +671,58 @@ class MainActivity : AppCompatActivity(),
             .setTitle("删除笔记")
             .setMessage("确定要删除 '${note.title}' 吗？")
             .setPositiveButton("删除") { dialog, which ->
-                Log.d("MainActivity", "开始删除笔记: ${note.title}")
+                Log.d("MainActivity", "开始删除笔记: ${note.title}, UUID=${note.uuid}")
 
-                try {
-                    // 1. 删除本地数据
-                    val deletedNote = noteManager.deleteNote(note.uuid)
+                // 在协程中执行删除操作，确保Git删除完成
+                CoroutineScope(Dispatchers.Main).launch {
+                    try {
+                        // 1. 删除本地数据
+                        val deletedNote = noteManager.deleteNote(note.uuid)
+                        Log.d("MainActivity", "本地删除完成")
 
-                    // 2. 删除Git仓库中的文件
-                    syncManager.deleteNoteFromGit(deletedNote)
+                        // 2. 立即验证删除
+                        var isDeleted = noteManager.verifyNoteDeleted(note.uuid)
+                        Log.d("MainActivity", "第一次验证结果: $isDeleted")
+                        
+                        // 3. 如果删除失败，尝试强制删除
+                        if (!isDeleted) {
+                            Log.w("MainActivity", "第一次删除验证失败，尝试强制删除")
+                            isDeleted = noteManager.forceDeleteNote(note.uuid)
+                            Log.d("MainActivity", "强制删除后验证结果: $isDeleted")
+                        }
 
-                    // 3. 立即更新UI
-                    updatePageCounts()
+                        // 4. 删除Git仓库中的文件（同步等待完成）
+                        Log.d("MainActivity", "开始删除Git中的文件...")
+                        val gitDeleteSuccess = syncManager.deleteNoteFromGitSync(deletedNote)
+                        Log.d("MainActivity", "Git删除结果: $gitDeleteSuccess")
 
-                    Toast.makeText(this, "已删除笔记", Toast.LENGTH_SHORT).show()
+                        // 5. 最终验证
+                        val finalCheck = noteManager.verifyNoteDeleted(note.uuid)
+                        Log.d("MainActivity", "最终验证结果: $finalCheck")
 
-                    // 4. 记录删除日志
-                    Log.d("MainActivity", "笔记删除完成: ${note.title}, 剩余笔记: ${noteManager.getAllNotes().size}")
+                        // 6. 立即更新UI
+                        updatePageCounts()
 
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "删除笔记失败", e)
-                    Toast.makeText(this, "删除失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                        // 7. 显示结果
+                        if (finalCheck && gitDeleteSuccess) {
+                            Toast.makeText(this@MainActivity, "已删除笔记", Toast.LENGTH_SHORT).show()
+                            Log.d("MainActivity", "笔记删除成功: ${note.title}, 剩余笔记: ${noteManager.getAllNotes().size}")
+                        } else if (finalCheck && !gitDeleteSuccess) {
+                            Toast.makeText(this@MainActivity, "本地已删除，但Git同步失败，下次同步时可能恢复", Toast.LENGTH_LONG).show()
+                            Log.w("MainActivity", "本地删除成功，但Git删除失败: ${note.title}")
+                        } else {
+                            Toast.makeText(this@MainActivity, "警告：笔记可能未完全删除，请重试", Toast.LENGTH_LONG).show()
+                            Log.w("MainActivity", "笔记删除验证失败: ${note.title}, 本地删除=$finalCheck, Git删除=$gitDeleteSuccess")
+                        }
+
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "删除笔记失败", e)
+                        Toast.makeText(this@MainActivity, "删除失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             .setNegativeButton("取消", null)
             .show()
-
-        // 在删除后添加验证
-        Handler(Looper.getMainLooper()).postDelayed({
-            val isDeleted = noteManager.verifyNoteDeleted(note.uuid)
-            Log.d("MainActivity", "笔记删除验证结果: UUID=${note.uuid}, 是否删除=$isDeleted")
-
-            if (!isDeleted) {
-                Toast.makeText(this, "警告：笔记可能未被完全删除", Toast.LENGTH_LONG).show()
-            }
-        }, 1000)
     }
 
     // SettingsDialogManager.SettingsDialogListener 实现
