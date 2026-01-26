@@ -1,6 +1,5 @@
 package com.hsiun.markdowntodo
 
-import NoteItem
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -347,12 +346,21 @@ class SyncManager(
 
                 // 解析冲突内容
                 val conflictParts = parseGitConflict(content)
-                if (conflictParts.size >= 2) {
+                if (conflictParts.size >= 3) {
                     val ourContent = conflictParts[0]  // 我们的版本
                     val theirContent = conflictParts[2] // 他们的版本
 
                     // 按更新时间合并
-                    val mergedContent = mergeTodoListsByUpdateTime(ourContent, theirContent)
+                    val mergedContent = if (relativePath.endsWith(FILE_METADATA)) {
+                        // metadata.json：按 id 合并，并保证输出是“单一合法数组”
+                        mergeMetadataJson(
+                            normalizeMetadataJson(ourContent),
+                            normalizeMetadataJson(theirContent)
+                        )
+                    } else {
+                        // 普通待办列表文件：按更新时间合并
+                        mergeTodoListsByUpdateTime(ourContent, theirContent)
+                    }
 
                     // 写回文件
                     file.writeText(mergedContent)
@@ -632,7 +640,13 @@ class SyncManager(
 
                     // 设置当前选中的列表
                     val selectedList = todoLists.find { it.isSelected }
-                    selectedList?.let {
+                    val listToSelect = selectedList
+                        ?: todoLists.firstOrNull { it.isDefault }
+                        ?: todoLists.firstOrNull()
+
+                    listToSelect?.let {
+                        // 兜底：metadata.json 里如果没有 isSelected=true 的列表，也要选中一个，
+                        // 否则 currentListId 可能指向不存在的列表，导致“当前列表不存在”
                         todoListManager.setCurrentList(it.id)
                     }
                 }
@@ -862,10 +876,31 @@ class SyncManager(
             // 清空笔记目录
             notesDir.listFiles()?.forEach { it.delete() }
 
-            // 保存笔记 - 使用 NoteManager 相同的逻辑获取文件名
+            // 保存笔记 - 使用与 NoteManager 相同的逻辑确保文件名唯一
+            val usedFileNames = mutableSetOf<String>()
             notes.forEach { note ->
-                // 获取与 NoteManager 一致的文件名
-                val fileName = note.getSafeFileName() + ".md"
+                // 生成唯一的文件名，与 NoteManager.getFileNameForNote() 逻辑一致
+                val safeName = note.getSafeFileName()
+                var fileName = "$safeName.md"
+                var counter = 1
+
+                val uuidShort = if (note.uuid.length >= 8) {
+                    note.uuid.substring(0, 8)
+                } else {
+                    note.uuid // 如果UUID长度不足8，使用完整UUID
+                }
+
+                // 确保文件名唯一
+                while (usedFileNames.contains(fileName)) {
+                    fileName = if (counter == 1) {
+                        "${safeName}_${uuidShort}.md"
+                    } else {
+                        "${safeName}_${uuidShort}_${counter}.md"
+                    }
+                    counter++
+                }
+                
+                usedFileNames.add(fileName)
                 val noteFile = File(notesDir, fileName)
                 noteFile.writeText(note.toMarkdown())
             }
@@ -901,7 +936,7 @@ class SyncManager(
                     try {
                         val content = file.readText()
                         val fileNote = NoteItem.fromMarkdown(content)
-                        if (fileNote?.id == note.id) {
+                        if (fileNote?.uuid == note.uuid) {
                             fileNameToDelete = file.name
                             break
                         }
@@ -922,7 +957,7 @@ class SyncManager(
                         }
                     )
                 } else {
-                    Log.w(TAG, "未找到要删除的笔记文件: ID=${note.id}, Title=${note.title}")
+                    Log.w(TAG, "未找到要删除的笔记文件: UUID=${note.uuid}, Title=${note.title}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "删除笔记同步异常", e)
@@ -943,6 +978,59 @@ class SyncManager(
     // ============= 辅助方法 =============
 
     /**
+     * 规范化待办列表元数据 JSON。
+     *
+     * 目标：保证返回值永远是一个“单一、合法”的 JSON Array 字符串（形如 `[...]`）。
+     *
+     * 背景：在 Git 冲突解析/合并失败时，metadata.json 可能出现类似 `[][{...}]` 的内容，
+     * 这是两个 JSON 数组被字符串拼接后的非法格式，直接 JSONArray(...) 会解析失败。
+     */
+    private fun normalizeMetadataJson(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return "[]"
+
+        // 1) 已经是合法 JSON array，直接返回
+        try {
+            org.json.JSONArray(trimmed)
+            return trimmed
+        } catch (_: Exception) {
+            // ignore
+        }
+
+        // 2) 尝试从内容中提取出一个或多个 JSON array 片段并合并
+        return try {
+            val arrayRegex = Regex("\\[[\\s\\S]*?]", RegexOption.MULTILINE)
+            val arrays = arrayRegex.findAll(trimmed)
+                .mapNotNull { match ->
+                    val candidate = match.value.trim()
+                    try {
+                        org.json.JSONArray(candidate)
+                        candidate
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                .toList()
+
+            when (arrays.size) {
+                0 -> "[]"
+                1 -> arrays[0]
+                else -> {
+                    // 多段数组（如 [] + [...]），按 id 合并
+                    var merged = arrays[0]
+                    for (i in 1 until arrays.size) {
+                        merged = mergeMetadataJson(merged, arrays[i])
+                    }
+                    merged
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "规范化 metadata.json 失败", e)
+            "[]"
+        }
+    }
+
+    /**
      * 读取待办列表元数据
      */
     private fun readTodoListsMetadata(file: File): List<TodoList> {
@@ -951,7 +1039,7 @@ class SyncManager(
                 return emptyList()
             }
 
-            val json = file.readText()
+            val json = normalizeMetadataJson(file.readText())
             val jsonArray = org.json.JSONArray(json)
             val result = mutableListOf<TodoList>()
 
@@ -1049,7 +1137,7 @@ class SyncManager(
                 }
             }
 
-            notes.sortedBy { it.id }
+            notes.sortedBy { it.uuid }
         } catch (e: Exception) {
             Log.e(TAG, "读取笔记目录失败", e)
             emptyList()
@@ -1088,7 +1176,7 @@ class SyncManager(
 
                 // 解析冲突内容
                 val conflictParts = parseGitConflict(content)
-                if (conflictParts.size >= 2) {
+                if (conflictParts.size >= 3) {
                     val ourContent = conflictParts[0]  // 我们的版本
                     val theirContent = conflictParts[2] // 他们的版本
 

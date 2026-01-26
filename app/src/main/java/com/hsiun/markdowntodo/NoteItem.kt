@@ -1,9 +1,24 @@
+package com.hsiun.markdowntodo
+
 import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+/**
+ * 笔记数据类
+ * 
+ * 表示一个笔记，包含标题、内容和元数据。
+ * 支持Markdown格式的序列化和反序列化。
+ * 
+ * @param id 笔记ID（已废弃，仅保留用于兼容，不再使用）
+ * @param title 笔记标题
+ * @param content 笔记内容（Markdown格式）
+ * @param createdAt 创建时间（格式：yyyy-MM-dd HH:mm:ss）
+ * @param updatedAt 更新时间（格式：yyyy-MM-dd HH:mm:ss）
+ * @param uuid 唯一标识符（UUID格式，用于标识笔记）
+ */
 data class NoteItem(
     val id: Int,
     var title: String,
@@ -62,10 +77,15 @@ data class NoteItem(
                 var extractedUuid = uuid ?: ""
 
                 // 尝试从第一行的HTML注释中提取UUID
-                if (lines.first().startsWith("<!-- UUID: ") && lines.first().endsWith(" -->")) {
-                    val firstLine = lines.first()
+                if (currentLineIndex < lines.size && lines[currentLineIndex].startsWith("<!-- UUID: ") && lines[currentLineIndex].endsWith(" -->")) {
+                    val firstLine = lines[currentLineIndex]
                     extractedUuid = firstLine.substringAfter("<!-- UUID: ").substringBefore(" -->").trim()
-                    currentLineIndex = 1
+                    currentLineIndex++
+                }
+
+                // 兼容旧格式：如果第二行是ID注释，跳过它
+                if (currentLineIndex < lines.size && lines[currentLineIndex].startsWith("<!-- ID: ") && lines[currentLineIndex].endsWith(" -->")) {
+                    currentLineIndex++
                 }
 
                 // 如果没有找到UUID，生成一个新的
@@ -129,7 +149,7 @@ data class NoteItem(
                     updatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
                 }
 
-                // 使用传入的ID或生成新的
+                // 使用传入的ID（兼容旧代码），如果没有则使用-1（不再使用ID，仅保留用于兼容）
                 val finalId = id ?: -1
 
                 NoteItem(

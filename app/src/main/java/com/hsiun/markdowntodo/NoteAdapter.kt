@@ -1,6 +1,6 @@
 package com.hsiun.markdowntodo
 
-import NoteItem
+import com.hsiun.markdowntodo.NoteItem
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -46,7 +46,7 @@ class NoteAdapter(
         }
 
         val note = notes[position]
-        Log.d(TAG, "绑定笔记: ID=${note.id}, 标题='${note.title}'")
+        Log.d(TAG, "绑定笔记: UUID=${note.uuid}, 标题='${note.title}'")
 
         // 设置标题
         holder.titleText.text = note.title
@@ -75,7 +75,7 @@ class NoteAdapter(
 
         // 设置点击事件 - 确保点击整个容器
         holder.itemContainer.setOnClickListener {
-            Log.d(TAG, "点击笔记项目: ID=${note.id}")
+            Log.d(TAG, "点击笔记项目: UUID=${note.uuid}")
             onNoteClicked(note)
         }
 
@@ -123,13 +123,13 @@ class NoteAdapter(
     }
 
     fun removeNote(note: NoteItem) {
-        val position = notes.indexOfFirst { it.id == note.id }
+        val position = notes.indexOfFirst { it.uuid == note.uuid }
         if (position != -1) {
             notes.removeAt(position)
             notifyItemRemoved(position)
-            Log.d(TAG, "移除笔记: ID=${note.id}")
+            Log.d(TAG, "移除笔记: UUID=${note.uuid}")
         } else {
-            Log.w(TAG, "尝试移除不存在的笔记: ID=${note.id}")
+            Log.w(TAG, "尝试移除不存在的笔记: UUID=${note.uuid}")
         }
     }
 }

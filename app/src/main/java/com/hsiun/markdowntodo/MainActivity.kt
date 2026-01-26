@@ -1,6 +1,6 @@
 package com.hsiun.markdowntodo
 
-import NoteItem
+import com.hsiun.markdowntodo.NoteItem
 import android.R
 import android.content.Intent
 import android.content.SharedPreferences
@@ -29,6 +29,18 @@ import com.google.android.material.tabs.TabLayoutMediator
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
 import java.io.File
 
+/**
+ * 主活动类，负责协调应用的主要功能
+ * 
+ * 功能包括：
+ * - 管理待办事项和笔记的显示
+ * - 处理页面切换（待办/笔记）
+ * - 协调各个管理器（TodoManager、NoteManager、SyncManager等）
+ * - 处理用户交互和事件回调
+ * - 管理Git同步功能
+ * 
+ * @author hsiun
+ */
 class MainActivity : AppCompatActivity(),
     TodoManager.TodoChangeListener,
     NoteManager.NoteChangeListener,
@@ -73,7 +85,6 @@ class MainActivity : AppCompatActivity(),
     fun openNoteEditPage(note: NoteItem? = null, isNewNote: Boolean = false) {
         val intent = Intent(this, NoteEditActivity::class.java).apply {
             if (note != null) {
-                putExtra("noteId", note.id)
                 putExtra("uuid", note.uuid)
                 putExtra("isNewNote", false)
             } else if (isNewNote) {
@@ -372,9 +383,9 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    override fun onUpdateNote(id: Int, title: String, content: String) {
+    override fun onUpdateNote(uuid: String, title: String, content: String) {
         try {
-            val note = noteManager.updateNote(id, title, content)
+            val note = noteManager.updateNote(uuid, title, content)
             syncManager.autoPushNote("更新笔记", note)
             Toast.makeText(this, "已更新笔记: $title", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -533,26 +544,51 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    /**
+     * 执行同步操作
+     * 
+     * @param isManualRefresh 是否为手动刷新
+     */
     private fun performSync(isManualRefresh: Boolean = false) {
+        // 防止重复同步
         if (isSyncing) {
             binding.swipeRefreshLayout.isRefreshing = false
             return
         }
 
+        // 同步冷却时间：5秒内不重复同步
         val currentTime = System.currentTimeMillis()
-        if (currentTime - lastSyncTime < 5000) { // 5秒冷却
+        if (!isManualRefresh && currentTime - lastSyncTime < 5000) {
             binding.swipeRefreshLayout.isRefreshing = false
+            return
+        }
+
+        // 检查Git配置
+        if (settingsManager.githubRepoUrl.isEmpty() || settingsManager.githubToken.isEmpty()) {
+            binding.swipeRefreshLayout.isRefreshing = false
+            if (isManualRefresh) {
+                Toast.makeText(this, "请先在设置中配置Git仓库信息", Toast.LENGTH_SHORT).show()
+            }
             return
         }
 
         isSyncing = true
         lastSyncTime = currentTime
 
-        if (!syncManager.performSync(isManualRefresh)) {
-            // 如果同步没有开始，重置状态
+        try {
+            if (!syncManager.performSync(isManualRefresh)) {
+                // 如果同步没有开始，重置状态
+                isSyncing = false
+                binding.swipeRefreshLayout.isRefreshing = false
+                updateSyncIndicator("同步未开始", Color.parseColor("#666666"))
+            }
+        } catch (e: Exception) {
+            // 捕获同步过程中的异常
             isSyncing = false
             binding.swipeRefreshLayout.isRefreshing = false
-            updateSyncIndicator("同步未开始", Color.parseColor("#666666"))
+            Log.e("MainActivity", "同步异常", e)
+            Toast.makeText(this, "同步异常: ${e.message}", Toast.LENGTH_SHORT).show()
+            updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
         }
     }
 
@@ -633,7 +669,7 @@ class MainActivity : AppCompatActivity(),
 
                 try {
                     // 1. 删除本地数据
-                    val deletedNote = noteManager.deleteNote(note.id)
+                    val deletedNote = noteManager.deleteNote(note.uuid)
 
                     // 2. 删除Git仓库中的文件
                     syncManager.deleteNoteFromGit(deletedNote)
@@ -656,8 +692,8 @@ class MainActivity : AppCompatActivity(),
 
         // 在删除后添加验证
         Handler(Looper.getMainLooper()).postDelayed({
-            val isDeleted = noteManager.verifyNoteDeleted(note.id)
-            Log.d("MainActivity", "笔记删除验证结果: ID=${note.id}, 是否删除=$isDeleted")
+            val isDeleted = noteManager.verifyNoteDeleted(note.uuid)
+            Log.d("MainActivity", "笔记删除验证结果: UUID=${note.uuid}, 是否删除=$isDeleted")
 
             if (!isDeleted) {
                 Toast.makeText(this, "警告：笔记可能未被完全删除", Toast.LENGTH_LONG).show()
@@ -789,9 +825,7 @@ class MainActivity : AppCompatActivity(),
             performSync()
         }
 
-        // 新增：每次回到应用时检查提醒
-        todoManager.checkAndTriggerReminders()
-        // 新增：每次回到应用时检查提醒
+        // 每次回到应用时检查提醒
         todoManager.checkAndTriggerReminders()
 
         // 新增：检查待办数据一致性

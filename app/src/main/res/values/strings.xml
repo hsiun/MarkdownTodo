@@ -1,3 +1,88 @@
 <resources>
     <string name="app_name">吉特待办</string>
+    
+    <!-- 通用消息 -->
+    <string name="success">成功</string>
+    <string name="failed">失败</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="delete">删除</string>
+    <string name="save">保存</string>
+    <string name="edit">编辑</string>
+    <string name="add">添加</string>
+    <string name="create">创建</string>
+    <string name="update">更新</string>
+    
+    <!-- 待办相关 -->
+    <string name="todo_added">已添加: %1$s</string>
+    <string name="todo_add_failed">添加失败: %1$s</string>
+    <string name="todo_updated">已更新: %1$s</string>
+    <string name="todo_update_failed">更新失败: %1$s</string>
+    <string name="todo_deleted">已删除待办</string>
+    <string name="delete_todo_title">删除待办</string>
+    <string name="delete_todo_message">确定要删除 \'%1$s\' 吗？</string>
+    <string name="todo_list_switched">已切换到 %1$s</string>
+    <string name="todo_list_switch_failed">切换列表失败</string>
+    <string name="todo_list_created">已创建列表: %1$s</string>
+    <string name="todo_list_create_failed">创建失败，可能已存在同名列表</string>
+    <string name="todo_list_name_empty">列表名称不能为空</string>
+    <string name="new_todo_list">新建待办列表</string>
+    <string name="todo_list_name_hint">请输入列表名称</string>
+    
+    <!-- 笔记相关 -->
+    <string name="note_added">已添加笔记: %1$s</string>
+    <string name="note_add_failed">添加笔记失败: %1$s</string>
+    <string name="note_updated">已更新笔记: %1$s</string>
+    <string name="note_update_failed">更新笔记失败: %1$s</string>
+    <string name="note_deleted">已删除笔记</string>
+    <string name="note_delete_failed">删除失败: %1$s</string>
+    <string name="note_delete_warning">警告：笔记可能未被完全删除</string>
+    <string name="delete_note_title">删除笔记</string>
+    <string name="delete_note_message">确定要删除 \'%1$s\' 吗？</string>
+    <string name="new_note">新建笔记</string>
+    <string name="edit_note">编辑笔记</string>
+    <string name="note_title_empty">标题不能为空</string>
+    <string name="note_not_found">未找到笔记</string>
+    <string name="note_save_failed">保存失败: %1$s</string>
+    <string name="discard_changes_title">放弃更改？</string>
+    
+    <!-- 同步相关 -->
+    <string name="sync_started">正在同步…</string>
+    <string name="sync_success">同步成功</string>
+    <string name="sync_failed">同步失败</string>
+    <string name="sync_conflict">同步冲突</string>
+    <string name="sync_conflict_auto_resolved">检测到同步冲突，已自动处理</string>
+    <string name="sync_not_started">同步未开始</string>
+    <string name="sync_status_not_connected">未连接</string>
+    
+    <!-- 设置相关 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_saved">设置已保存</string>
+    <string name="settings_reset">设置已重置为默认值</string>
+    <string name="git_settings_updated">Git设置已更新</string>
+    <string name="git_token_empty">请填写Git Token</string>
+    <string name="git_repo_url_empty">请填写Git仓库地址</string>
+    
+    <!-- 提醒相关 -->
+    <string name="select_reminder_time">选择提醒时间</string>
+    <string name="select_reminder_date">选择提醒日期</string>
+    
+    <!-- 错误消息 -->
+    <string name="error_main_activity_not_initialized">MainActivity未初始化</string>
+    <string name="error_initialization_failed">初始化失败</string>
+    <string name="error_cannot_get_main_activity">无法获取主活动</string>
+    <string name="error_fragment_manager_not_set">请先设置FragmentManager</string>
+    
+    <!-- 空状态 -->
+    <string name="empty_todos">暂无待办事项\n下拉刷新可同步云端数据</string>
+    <string name="empty_todos_all">暂无全部待办事项\n下拉刷新可同步云端数据</string>
+    <string name="empty_todos_active">暂无未完成待办事项\n下拉刷新可同步云端数据</string>
+    <string name="empty_notes">暂无笔记\n点击右下角按钮创建新笔记</string>
+    
+    <!-- Tab标签 -->
+    <string name="tab_todo">待办</string>
+    <string name="tab_note">笔记</string>
+    
+    <!-- 笔记标题 -->
+    <string name="notes_title">默认笔记 (%1$d) 条</string>
 </resources>

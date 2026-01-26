@@ -10,7 +10,6 @@ import com.hsiun.markdowntodo.databinding.ActivityNoteEditBinding
 class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityNoteEditBinding
-    private var noteId: Int = -1
     private var uuid: String = ""
     private var isNewNote: Boolean = false
     private lateinit var mainActivity: MainActivity
@@ -32,11 +31,10 @@ class NoteEditActivity : AppCompatActivity() {
         supportActionBar?.setDisplayShowTitleEnabled(false)
 
         // 获取传递的数据
-        noteId = intent.getIntExtra("noteId", -1)
-        uuid = intent.getStringExtra("uuid").toString()
+        uuid = intent.getStringExtra("uuid") ?: ""
         isNewNote = intent.getBooleanExtra("isNewNote", false)
 
-        Log.d("NoteEditActivity", "接收参数: noteId=$noteId, isNewNote=$isNewNote")
+        Log.d("NoteEditActivity", "接收参数: uuid=$uuid, isNewNote=$isNewNote")
 
         if (isNewNote) {
             // 新建笔记
@@ -53,7 +51,7 @@ class NoteEditActivity : AppCompatActivity() {
                 Log.d("NoteEditActivity", "加载笔记: ${note.title}")
             } else {
                 Toast.makeText(this, "未找到笔记", Toast.LENGTH_SHORT).show()
-                Log.e("NoteEditActivity", "未找到笔记ID: $noteId")
+                Log.e("NoteEditActivity", "未找到笔记UUID: $uuid")
                 finish()
                 return
             }
@@ -102,13 +100,22 @@ class NoteEditActivity : AppCompatActivity() {
                 // 同步到Git
                 mainActivity.syncManager.autoPushNote("添加笔记", note)
                 Log.d("NoteEditActivity", "新建笔记成功: ${note.title}")
-            } else if (noteId != -1) {
-                // 更新现有笔记
-                val note = mainActivity.noteManager.updateNote(noteId, title, content)
-                Toast.makeText(this, "已更新笔记: $title", Toast.LENGTH_SHORT).show()
-                // 同步到Git
-                mainActivity.syncManager.autoPushNote("更新笔记", note)
-                Log.d("NoteEditActivity", "更新笔记成功: ${note.title}")
+            } else if (uuid.isNotEmpty()) {
+                // 更新现有笔记（使用UUID查找）
+                val existingNote = mainActivity.noteManager.getAllNotes().find { it.uuid == uuid }
+                if (existingNote != null) {
+                    val note = mainActivity.noteManager.updateNote(uuid, title, content)
+                    Toast.makeText(this, "已更新笔记: $title", Toast.LENGTH_SHORT).show()
+                    // 同步到Git
+                    mainActivity.syncManager.autoPushNote("更新笔记", note)
+                    Log.d("NoteEditActivity", "更新笔记成功: ${note.title}")
+                } else {
+                    Toast.makeText(this, "未找到要更新的笔记", Toast.LENGTH_SHORT).show()
+                    Log.e("NoteEditActivity", "未找到UUID: $uuid")
+                }
+            } else {
+                Toast.makeText(this, "无效的笔记参数", Toast.LENGTH_SHORT).show()
+                Log.e("NoteEditActivity", "无效参数: uuid=$uuid")
             }
             finish()
         } catch (e: Exception) {
@@ -125,8 +132,8 @@ class NoteEditActivity : AppCompatActivity() {
 
         val hasChanges = if (isNewNote) {
             title.isNotEmpty() || content.isNotEmpty()
-        } else if (noteId != -1) {
-            val originalNote = mainActivity.noteManager.getAllNotes().find { it.id == noteId }
+        } else if (uuid.isNotEmpty()) {
+            val originalNote = mainActivity.noteManager.getAllNotes().find { it.uuid == uuid }
             originalNote?.let {
                 title != it.title || content != it.content
             } ?: false

@@ -307,6 +307,8 @@ class TodoListManager(private val context: Context) {
 
     fun cleanup() {
         todoLists.clear()
+        // 清空列表时同时重置当前列表ID，避免出现“悬空ID”导致 getCurrentList() 返回 null
+        currentListId = ""
     }
 
     // 修改 addExistingList 方法，处理可能的重名情况

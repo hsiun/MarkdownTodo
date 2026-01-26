@@ -74,7 +74,18 @@ class TodoManager(private val context: Context) {
             val currentList = todoListManager.getCurrentList()
 
             if (currentList == null) {
-                Log.w(TAG, "当前列表不存在，加载失败")
+                // 兜底：如果 currentListId 指向的列表不存在（常见于同步后列表元数据被重建/覆盖），
+                // 自动切回默认列表或第一个列表，再重试一次，避免用户看到“列表找不到”
+                val fallbackList = todoListManager.getAllLists().firstOrNull { it.isDefault }
+                    ?: todoListManager.getAllLists().firstOrNull()
+
+                if (fallbackList != null && todoListManager.setCurrentList(fallbackList.id)) {
+                    Log.w(TAG, "当前列表不存在，已自动切换到: ${fallbackList.name} (ID: ${fallbackList.id})")
+                    loadCurrentListTodos()
+                    return
+                }
+
+                Log.w(TAG, "当前列表不存在，且无法自动恢复")
                 todoChangeListener?.onTodoError("当前列表不存在")
                 return
             }

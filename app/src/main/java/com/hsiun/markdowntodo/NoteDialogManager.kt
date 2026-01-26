@@ -1,6 +1,6 @@
 package com.hsiun.markdowntodo
 
-import NoteItem
+import com.hsiun.markdowntodo.NoteItem
 import android.app.AlertDialog
 import android.content.Context
 import android.text.Editable
@@ -13,7 +13,7 @@ class NoteDialogManager(private val context: Context) {
 
     interface NoteDialogListener {
         fun onAddNote(title: String, content: String)
-        fun onUpdateNote(id: Int, title: String, content: String)
+        fun onUpdateNote(uuid: String, title: String, content: String)
         fun onCancel()
     }
 
@@ -76,8 +76,8 @@ class NoteDialogManager(private val context: Context) {
         // 设置光标位置
         titleEditText.setSelection(note.title.length)
 
-        // 保存笔记ID到tag
-        saveButton.tag = note.id
+        // 保存笔记UUID到tag
+        saveButton.tag = note.uuid
 
         val dialog = AlertDialog.Builder(context)
             .setView(dialogView)
@@ -87,9 +87,9 @@ class NoteDialogManager(private val context: Context) {
         saveButton.setOnClickListener {
             val title = titleEditText.text.toString().trim()
             val content = contentEditText.text.toString().trim()  // 纯内容
-            val noteId = saveButton.tag as? Int
-            if (title.isNotEmpty() && noteId != null) {
-                listener.onUpdateNote(noteId, title, content)  // 只传递纯内容
+            val noteUuid = saveButton.tag as? String
+            if (title.isNotEmpty() && noteUuid != null) {
+                listener.onUpdateNote(noteUuid, title, content)  // 只传递纯内容
                 dialog.dismiss()
             }
         }

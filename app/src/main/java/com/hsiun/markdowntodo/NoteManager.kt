@@ -1,6 +1,6 @@
 package com.hsiun.markdowntodo
 
-import NoteItem
+import com.hsiun.markdowntodo.NoteItem
 import android.content.Context
 import android.util.Log
 import java.io.File
@@ -14,16 +14,14 @@ class NoteManager(private val context: Context) {
         private const val TAG = "NoteManager"
         private const val GIT_REPO_DIR = "git_repo"
         private const val DIR_NOTES = "notes"
-        private const val MAX_ID_FILE = "note_max_id.json"
     }
 
     private val repoDir = File(context.filesDir, GIT_REPO_DIR)
     private val notesDir = File(repoDir, DIR_NOTES)
     private var notes = mutableListOf<NoteItem>()
-    private var nextId = 1
 
-    // 记录笔记ID和文件名的映射关系
-    private val noteFileMap = mutableMapOf<Int, String>()
+    // 记录笔记UUID和文件名的映射关系
+    private val noteFileMap = mutableMapOf<String, String>()
 
     interface NoteChangeListener {
         fun onNotesChanged(notes: List<NoteItem>)
@@ -43,39 +41,11 @@ class NoteManager(private val context: Context) {
         if (!notesDir.exists()) {
             notesDir.mkdirs()
         }
-        loadMaxId()
         loadAllNotes()
     }
 
     fun setNoteChangeListener(listener: NoteChangeListener) {
         this.noteChangeListener = listener
-    }
-
-    private fun loadMaxId() {
-        val maxIdFile = File(context.filesDir, MAX_ID_FILE)
-        if (maxIdFile.exists()) {
-            try {
-                val json = maxIdFile.readText()
-                val jsonObject = org.json.JSONObject(json)
-                nextId = jsonObject.getInt("max_id")
-                Log.d(TAG, "加载笔记最大ID: $nextId")
-            } catch (e: Exception) {
-                Log.e(TAG, "加载笔记最大ID失败", e)
-                nextId = 1
-            }
-        }
-    }
-
-    private fun saveMaxId() {
-        try {
-            val maxIdFile = File(context.filesDir, MAX_ID_FILE)
-            val jsonObject = org.json.JSONObject().apply {
-                put("max_id", nextId)
-            }
-            maxIdFile.writeText(jsonObject.toString())
-        } catch (e: Exception) {
-            Log.e(TAG, "保存笔记最大ID失败", e)
-        }
     }
 
     fun loadAllNotes() {
@@ -97,7 +67,7 @@ class NoteManager(private val context: Context) {
             Log.d(TAG, "找到 ${noteFiles.size} 个笔记文件")
 
             val loadedNotes = mutableListOf<NoteItem>()
-            val processedFiles = mutableMapOf<Int, Pair<NoteItem, String>>() // 存储ID -> (笔记, 原文件名)
+            val processedFiles = mutableMapOf<String, Pair<NoteItem, String>>() // 存储UUID -> (笔记, 原文件名)
 
             // 第一步：收集所有笔记，识别旧格式
             noteFiles.forEach { originalFile ->
@@ -113,7 +83,29 @@ class NoteManager(private val context: Context) {
                                 originalFile.name.contains("_${loadedNote.uuid}.md") ||
                                 originalFile.name.matches(Regex("note_\\d+_[a-f0-9-]+\\.md"))
 
-                        processedFiles[loadedNote.id] = Pair(loadedNote, originalFile.name)
+                        // 检查UUID是否已存在（处理重复UUID的情况）
+                        if (processedFiles.containsKey(loadedNote.uuid)) {
+                            Log.w(TAG, "发现重复UUID: ${loadedNote.uuid}, 文件1: ${processedFiles[loadedNote.uuid]?.second}, 文件2: ${originalFile.name}")
+                            // 保留更新时间更晚的笔记
+                            val existingNote = processedFiles[loadedNote.uuid]?.first
+                            if (existingNote != null) {
+                                try {
+                                    val existingDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(existingNote.updatedAt) ?: Date(0)
+                                    val newDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(loadedNote.updatedAt) ?: Date(0)
+                                    if (newDate.after(existingDate)) {
+                                        Log.d(TAG, "保留更新时间的笔记: ${originalFile.name}")
+                                        processedFiles[loadedNote.uuid] = Pair(loadedNote, originalFile.name)
+                                    } else {
+                                        Log.d(TAG, "保留已存在的笔记: ${processedFiles[loadedNote.uuid]?.second}")
+                                    }
+                                } catch (e: Exception) {
+                                    // 如果日期解析失败，保留已存在的
+                                    Log.w(TAG, "日期解析失败，保留已存在的笔记")
+                                }
+                            }
+                        } else {
+                            processedFiles[loadedNote.uuid] = Pair(loadedNote, originalFile.name)
+                        }
 
                         if (isOldFormat) {
                             Log.d(TAG, "检测到旧格式笔记: ${originalFile.name}")
@@ -126,9 +118,9 @@ class NoteManager(private val context: Context) {
 
             // 第二步：为每个笔记生成新文件名
             val usedFileNames = mutableSetOf<String>()
-            val renameMap = mutableMapOf<Int, Pair<String, String>>() // ID -> (原文件名, 新文件名)
+            val renameMap = mutableMapOf<String, Pair<String, String>>() // UUID -> (原文件名, 新文件名)
 
-            processedFiles.forEach { (id, pair) ->
+            processedFiles.forEach { (uuid, pair) ->
                 val (note, originalFileName) = pair
 
                 // 生成新文件名
@@ -137,7 +129,7 @@ class NoteManager(private val context: Context) {
 
                 // 如果文件名需要更改，记录重命名信息
                 if (originalFileName != newFileName) {
-                    renameMap[id] = Pair(originalFileName, newFileName)
+                    renameMap[uuid] = Pair(originalFileName, newFileName)
                     Log.d(TAG, "计划重命名: $originalFileName -> $newFileName")
                 }
 
@@ -145,7 +137,7 @@ class NoteManager(private val context: Context) {
             }
 
             // 第三步：执行文件操作（先重命名，再删除旧格式文件）
-            renameMap.forEach { (id, fileNames) ->
+            renameMap.forEach { (uuid, fileNames) ->
                 val (oldFileName, newFileName) = fileNames
 
                 try {
@@ -153,7 +145,7 @@ class NoteManager(private val context: Context) {
                     val newFile = File(notesDir, newFileName)
 
                     // 如果旧文件是旧格式，先保存为新格式内容
-                    val note = processedFiles[id]?.first
+                    val note = processedFiles[uuid]?.first
                     if (note != null && oldFile.name.contains("_${note.uuid}.md")) {
                         // 保存为新格式
                         newFile.writeText(note.toMarkdown())
@@ -170,17 +162,17 @@ class NoteManager(private val context: Context) {
                     }
 
                     // 更新映射
-                    noteFileMap[id] = newFileName
+                    noteFileMap[uuid] = newFileName
                 } catch (e: Exception) {
                     Log.e(TAG, "处理文件失败: $oldFileName -> $newFileName", e)
                 }
             }
 
             // 第四步：处理不需要重命名的文件，但需要检查格式
-            processedFiles.forEach { (id, pair) ->
+            processedFiles.forEach { (uuid, pair) ->
                 val (note, fileName) = pair
 
-                if (!renameMap.containsKey(id)) {
+                if (!renameMap.containsKey(uuid)) {
                     val file = File(notesDir, fileName)
                     if (file.exists()) {
                         val content = file.readText()
@@ -190,7 +182,7 @@ class NoteManager(private val context: Context) {
                             file.writeText(note.toMarkdown())
                         }
                     }
-                    noteFileMap[id] = fileName
+                    noteFileMap[uuid] = fileName
                 }
             }
 
@@ -202,12 +194,6 @@ class NoteManager(private val context: Context) {
                     Date()
                 }
             })
-
-            if (notes.isNotEmpty()) {
-                nextId = notes.maxOf { it.id } + 1
-            } else {
-                nextId = 1
-            }
 
             noteChangeListener?.onNotesChanged(notes)
             Log.d(TAG, "加载笔记完成: ${notes.size} 条")
@@ -226,12 +212,19 @@ class NoteManager(private val context: Context) {
         var fileName = "$baseName.md"
         var counter = 1
 
+        // 使用UUID的短形式（前8个字符）确保文件名唯一
+        val uuidShort = if (note.uuid.length >= 8) {
+            note.uuid.substring(0, 8)
+        } else {
+            note.uuid // 如果UUID长度不足8，使用完整UUID
+        }
+
         // 确保文件名唯一
         while (usedFileNames.contains(fileName) || File(notesDir, fileName).exists()) {
             fileName = if (counter == 1) {
-                "${baseName}_${note.id}.md"
+                "${baseName}_${uuidShort}.md"
             } else {
-                "${baseName}_${note.id}_${counter}.md"
+                "${baseName}_${uuidShort}_${counter}.md"
             }
             counter++
         }
@@ -239,10 +232,11 @@ class NoteManager(private val context: Context) {
         return fileName
     }
 
-    // 根据笔记生成文件名（使用标题，可能包含ID以防止重复）
+    // 根据笔记生成文件名（使用标题，可能包含UUID短形式以防止重复）
     private fun getFileNameForNote(note: NoteItem): String {
         val safeName = note.getSafeFileName()
         var fileName = "$safeName.md"
+        val uuidShort = note.uuid.substring(0, 8)
 
         // 检查是否已存在相同文件名的文件（且不是当前笔记）
         var counter = 1
@@ -255,7 +249,7 @@ class NoteManager(private val context: Context) {
                 val isCurrentNoteFile = try {
                     val content = existingFile.readText()
                     val existingNote = NoteItem.fromMarkdown(content)
-                    existingNote?.id == note.id
+                    existingNote?.uuid == note.uuid
                 } catch (e: Exception) {
                     false
                 }
@@ -266,9 +260,9 @@ class NoteManager(private val context: Context) {
                 } else {
                     // 不是当前笔记的文件，尝试其他名称
                     fileName = if (counter == 1) {
-                        "${safeName}_${note.id}.md"
+                        "${safeName}_${uuidShort}.md"
                     } else {
-                        "${safeName}_${note.id}_${counter}.md"
+                        "${safeName}_${uuidShort}_${counter}.md"
                     }
                     counter++
                 }
@@ -291,14 +285,12 @@ class NoteManager(private val context: Context) {
                 throw IllegalArgumentException("标题不能为空")
             }
 
-            val newId = nextId++
-            val note = NoteItem(id = newId, title = title, content = content)
+            val note = NoteItem(id = -1, title = title, content = content)
 
-            Log.d(TAG, "添加笔记: ID=$newId, 标题='$title'")
+            Log.d(TAG, "添加笔记: UUID=${note.uuid}, 标题='$title'")
 
             notes.add(note)
             saveNoteToFile(note)
-            saveMaxId()
 
             noteChangeListener?.onNoteAdded(note)
             note
@@ -309,13 +301,13 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    fun updateNote(id: Int, title: String, content: String): NoteItem {
+    fun updateNote(uuid: String, title: String, content: String): NoteItem {
         return try {
             if (title.trim().isEmpty()) {
                 throw IllegalArgumentException("标题不能为空")
             }
 
-            val noteIndex = notes.indexOfFirst { it.id == id }
+            val noteIndex = notes.indexOfFirst { it.uuid == uuid }
             if (noteIndex == -1) {
                 throw IllegalArgumentException("未找到笔记")
             }
@@ -345,9 +337,9 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    fun deleteNote(id: Int): NoteItem {
+    fun deleteNote(uuid: String): NoteItem {
         return try {
-            val noteIndex = notes.indexOfFirst { it.id == id }
+            val noteIndex = notes.indexOfFirst { it.uuid == uuid }
             if (noteIndex == -1) {
                 throw IllegalArgumentException("未找到笔记")
             }
@@ -356,7 +348,7 @@ class NoteManager(private val context: Context) {
             notes.removeAt(noteIndex)
 
             // 删除对应的文件
-            val fileName = noteFileMap.remove(id)
+            val fileName = noteFileMap.remove(uuid)
             if (fileName != null) {
                 val noteFile = File(notesDir, fileName)
                 if (noteFile.exists()) {
@@ -367,9 +359,7 @@ class NoteManager(private val context: Context) {
 
             // 额外清理：删除可能存在的旧格式文件
             val oldFormatFiles = notesDir.listFiles { file ->
-                file.isFile &&
-                        (file.name.startsWith("note_${id}_") ||
-                                file.name.contains("_${noteToDelete.uuid}.md"))
+                file.isFile && file.name.contains("_${noteToDelete.uuid}.md")
             } ?: emptyArray()
 
             oldFormatFiles.forEach { file ->
@@ -390,7 +380,7 @@ class NoteManager(private val context: Context) {
     private fun saveNoteToFile(note: NoteItem) {
         try {
             val newFileName = getFileNameForNote(note)
-            val oldFileName = noteFileMap[note.id]
+            val oldFileName = noteFileMap[note.uuid]
 
             // 如果存在旧文件且文件名不同，删除旧文件
             if (oldFileName != null && oldFileName != newFileName) {
@@ -404,7 +394,7 @@ class NoteManager(private val context: Context) {
             // 保存新文件
             val noteFile = File(notesDir, newFileName)
             noteFile.writeText(note.toMarkdown())
-            noteFileMap[note.id] = newFileName
+            noteFileMap[note.uuid] = newFileName
             // 清理可能的重复文件
             cleanupDuplicateNoteFiles(note, newFileName)
 
@@ -416,18 +406,31 @@ class NoteManager(private val context: Context) {
     }
     private fun cleanupDuplicateNoteFiles(note: NoteItem, currentFileName: String) {
         try {
-            // 查找所有可能重复的文件
+            // 查找所有可能重复的文件（基于UUID）
+            val uuidShort = if (note.uuid.length >= 8) {
+                note.uuid.substring(0, 8)
+            } else {
+                note.uuid
+            }
             val duplicateFiles = notesDir.listFiles { file ->
                 file.isFile && file.name.endsWith(".md") &&
-                        (file.name.contains("_${note.uuid}.md") ||
-                                file.name.startsWith("note_${note.id}_"))
+                        file.name.contains("_$uuidShort")
             } ?: emptyArray()
 
             // 删除除当前文件外的所有重复文件
             duplicateFiles.forEach { file ->
                 if (file.name != currentFileName && file.exists()) {
-                    file.delete()
-                    Log.d(TAG, "删除重复笔记文件: ${file.name}")
+                    // 验证文件内容是否属于同一笔记
+                    try {
+                        val content = file.readText()
+                        val fileNote = NoteItem.fromMarkdown(content)
+                        if (fileNote?.uuid == note.uuid) {
+                            file.delete()
+                            Log.d(TAG, "删除重复笔记文件: ${file.name}")
+                        }
+                    } catch (e: Exception) {
+                        // 忽略解析失败的文件
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -463,15 +466,6 @@ class NoteManager(private val context: Context) {
                 saveNoteToFile(note)
             }
 
-            // 更新最大ID
-            if (newNotes.isNotEmpty()) {
-                nextId = newNotes.maxOf { it.id } + 1
-            } else {
-                nextId = 1
-            }
-
-            saveMaxId()
-
             // 通知监听器
             noteChangeListener?.onNotesChanged(notes)
             Log.d(TAG, "已替换所有笔记: ${notes.size} 条")
@@ -481,18 +475,18 @@ class NoteManager(private val context: Context) {
         }
     }
 
-    fun verifyNoteDeleted(id: Int): Boolean {
-        val noteExistsInList = notes.any { it.id == id }
+    fun verifyNoteDeleted(uuid: String): Boolean {
+        val noteExistsInList = notes.any { it.uuid == uuid }
 
         // 检查文件是否存在
-        val fileName = noteFileMap[id]
+        val fileName = noteFileMap[uuid]
         val fileExists = if (fileName != null) {
             File(notesDir, fileName).exists()
         } else {
             false
         }
 
-        Log.d(TAG, "验证笔记删除 - ID=$id: 列表中存在=$noteExistsInList, 文件存在=$fileExists")
+        Log.d(TAG, "验证笔记删除 - UUID=$uuid: 列表中存在=$noteExistsInList, 文件存在=$fileExists")
 
         return !noteExistsInList && !fileExists
     }

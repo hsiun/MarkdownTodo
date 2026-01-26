@@ -1,6 +1,6 @@
 package com.hsiun.markdowntodo
 
-import NoteItem
+import com.hsiun.markdowntodo.NoteItem
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -41,7 +41,6 @@ class NoteFragment : Fragment(), NoteManager.NoteChangeListener {
                 // 启动编辑页面
                 val intent = android.content.Intent(requireContext(), NoteEditActivity::class.java).apply {
                     putExtra("uuid", note.uuid)
-                    putExtra("noteId", note.id)
                     putExtra("isNewNote", false)
                 }
                 startActivity(intent)

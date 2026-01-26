@@ -7,6 +7,24 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+/**
+ * 待办事项数据类
+ * 
+ * 表示一个待办事项，包含标题、完成状态、提醒时间等信息。
+ * 支持Markdown格式的序列化和反序列化。
+ * 
+ * @param id 待办事项的唯一ID
+ * @param title 待办事项标题
+ * @param isCompleted 是否已完成
+ * @param remindTime 提醒时间（时间戳，毫秒）
+ * @param repeatType 重复类型（参见RepeatType枚举）
+ * @param createdAt 创建时间（格式：yyyy-MM-dd HH:mm:ss）
+ * @param uuid 唯一标识符（UUID格式）
+ * @param originalRemindTime 原始提醒时间（用于重复提醒）
+ * @param nextRemindTime 下次提醒时间（用于重复提醒）
+ * @param hasReminded 是否已提醒
+ * @param updatedAt 更新时间（格式：yyyy-MM-dd HH:mm:ss）
+ */
 data class TodoItem(
     val id: Int,
     var title: String,
