@@ -1,20 +1,36 @@
 package com.hsiun.markdowntodo
 
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.hsiun.markdowntodo.databinding.ActivityNoteEditBinding
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
+import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.ImageItem
+import io.noties.markwon.image.SchemeHandler
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStream
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -40,6 +56,46 @@ class NoteEditActivity : AppCompatActivity() {
     // 用于撤销的原始内容
     private var originalTitle: String = ""
     private var originalContent: String = ""
+    
+    // 图片相关
+    private var currentPhotoUri: Uri? = null
+    // Git 仓库中的图片目录
+    private val gitImagesDir: File by lazy {
+        val repoDir = File(filesDir, "git_repo")
+        val dir = File(repoDir, "images")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        dir
+    }
+    
+    // 图片选择器
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { handleImageUri(it) }
+    }
+    
+    // 相机拍照
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && currentPhotoUri != null) {
+            currentPhotoUri?.let { handleImageUri(it) }
+        }
+    }
+    
+    // 权限请求
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.all { it.value }
+        if (allGranted) {
+            showImageSourceDialog()
+        } else {
+            Toast.makeText(this, "需要权限才能添加图片", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -126,18 +182,112 @@ class NoteEditActivity : AppCompatActivity() {
      * 初始化 Markdown 渲染器
      */
     private fun initMarkwon() {
-        markwon = Markwon.builder(this)
-            .usePlugin(StrikethroughPlugin.create())  // 删除线支持
-            .usePlugin(TablePlugin.create(this))       // 表格支持
-            .usePlugin(TaskListPlugin.create(this))   // 任务列表支持
-            .usePlugin(LinkifyPlugin.create())        // 链接自动识别
+        try {
+            val repoDir = File(filesDir, "git_repo")
+            
+            markwon = Markwon.builder(this)
+                .usePlugin(StrikethroughPlugin.create())  // 删除线支持
+                .usePlugin(TablePlugin.create(this))       // 表格支持
+                .usePlugin(TaskListPlugin.create(this))   // 任务列表支持
+                .usePlugin(LinkifyPlugin.create())        // 链接自动识别
+                .usePlugin(ImagesPlugin.create(object : ImagesPlugin.ImagesConfigure {
+                    override fun configureImages(plugin: ImagesPlugin) {
+                        // 添加自定义的 SchemeHandler 来处理 file:// 路径
+                        // 相对路径已经在预处理阶段转换为 file:// 路径
+                        plugin.addSchemeHandler(object : SchemeHandler() {
+                            override fun handle(raw: String, uri: android.net.Uri): ImageItem {
+                                Log.d("NoteEditActivity", "SchemeHandler 被调用: raw=$raw, uri=$uri")
+                                return try {
+                                    // 移除 file:// 前缀
+                                    val filePath = if (raw.startsWith("file://")) {
+                                        raw.substring(7)
+                                    } else {
+                                        raw
+                                    }
+                                    val file = File(filePath)
+                                    
+                                    Log.d("NoteEditActivity", "尝试加载图片: ${file.absolutePath}, 存在: ${file.exists()}")
+                                    
+                                    if (file.exists() && file.canRead()) {
+                                        val inputStream = FileInputStream(file)
+                                        // 根据文件扩展名确定 content-type
+                                        val contentType = when (file.extension.lowercase()) {
+                                            "jpg", "jpeg" -> "image/jpeg"
+                                            "png" -> "image/png"
+                                            "gif" -> "image/gif"
+                                            "webp" -> "image/webp"
+                                            else -> "image/jpeg"
+                                        }
+                                        ImageItem.withDecodingNeeded(contentType, inputStream)
+                                    } else {
+                                        Log.e("NoteEditActivity", "图片文件不存在或无法读取: ${file.absolutePath}")
+                                        throw java.io.FileNotFoundException("图片文件不存在: ${file.absolutePath}")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("NoteEditActivity", "加载图片失败: $raw", e)
+                                    throw e
+                                }
+                            }
+
+                            override fun supportedSchemes(): Collection<String> {
+                                return listOf("file")
+                            }
+                        })
+                    }
+                }))
             .build()
+            Log.d("NoteEditActivity", "Markwon 初始化成功")
+        } catch (e: Exception) {
+            Log.e("NoteEditActivity", "Markwon 初始化失败", e)
+            // 如果初始化失败，创建一个基本的 Markwon 实例
+            markwon = Markwon.builder(this)
+                .usePlugin(StrikethroughPlugin.create())
+                .usePlugin(TablePlugin.create(this))
+                .usePlugin(TaskListPlugin.create(this))
+                .usePlugin(LinkifyPlugin.create())
+                .build()
+            Log.d("NoteEditActivity", "使用基本 Markwon 配置")
+        }
+    }
+    
+    /**
+     * 预处理 Markdown 内容，将相对路径转换为 file:// 绝对路径
+     */
+    private fun preprocessImagePaths(content: String): String {
+        val repoDir = File(filesDir, "git_repo")
+        // 匹配 Markdown 图片语法: ![alt](path)
+        val pattern = Regex("""!\[([^\]]*)\]\(([^)]+)\)""")
+        
+        return pattern.replace(content) { matchResult ->
+            val altText = matchResult.groupValues[1]
+            val imagePath = matchResult.groupValues[2]
+            
+            // 如果已经是 file:// 路径，直接返回
+            if (imagePath.startsWith("file://")) {
+                matchResult.value
+            } else if (!imagePath.contains("://")) {
+                // 相对路径，转换为 file:// 绝对路径
+                val imageFile = File(repoDir, imagePath)
+                val absolutePath = "file://${imageFile.absolutePath}"
+                Log.d("NoteEditActivity", "预处理图片路径: $imagePath -> $absolutePath")
+                "![$altText]($absolutePath)"
+            } else {
+                // 其他协议（http/https），保持不变
+                matchResult.value
+            }
+        }
     }
     
     /**
      * 进入查看模式
      */
     private fun enterViewMode() {
+        // 确保 markwon 已初始化
+        if (!::markwon.isInitialized) {
+            Log.e("NoteEditActivity", "markwon 未初始化，尝试重新初始化")
+            initMarkwon()
+        }
+        
         isEditMode = false
         isScrollListenerEnabled = true  // 确保启用滚动监听
         
@@ -153,8 +303,15 @@ class NoteEditActivity : AppCompatActivity() {
             binding.noteContentScrollView.visibility = View.VISIBLE
             // 移除边框（查看模式下不显示边框）
             binding.noteContentScrollView.background = null
+            // 预处理 Markdown 内容：将相对路径转换为 file:// 绝对路径
+            val processedContent = preprocessImagePaths(note.content)
             // 使用 Markwon 渲染 Markdown 内容
-            markwon.setMarkdown(binding.noteContentTextView, note.content)
+            try {
+                markwon.setMarkdown(binding.noteContentTextView, processedContent)
+            } catch (e: Exception) {
+                Log.e("NoteEditActivity", "渲染 Markdown 失败", e)
+                binding.noteContentTextView.text = note.content
+            }
             
             // 隐藏编辑模式的视图
             binding.noteEditScrollView.visibility = View.GONE
@@ -363,6 +520,157 @@ class NoteEditActivity : AppCompatActivity() {
         binding.btnList.setOnClickListener {
             insertMarkdownTag("- ", "")
         }
+        
+        // 图片
+        binding.btnImage.setOnClickListener {
+            checkAndRequestPermissions()
+        }
+    }
+    
+    /**
+     * 检查并请求权限
+     */
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf<String>()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ 需要 READ_MEDIA_IMAGES
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_IMAGES) 
+                != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+            }
+        } else {
+            // Android 12 及以下需要 READ_EXTERNAL_STORAGE
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) 
+                != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+        
+        // 相机权限
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) 
+            != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(android.Manifest.permission.CAMERA)
+        }
+        
+        if (permissions.isEmpty()) {
+            showImageSourceDialog()
+        } else {
+            permissionLauncher.launch(permissions.toTypedArray())
+        }
+    }
+    
+    /**
+     * 显示图片来源选择对话框
+     */
+    private fun showImageSourceDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("选择图片")
+            .setItems(arrayOf("从相册选择", "拍照")) { _, which ->
+                when (which) {
+                    0 -> imagePickerLauncher.launch("image/*")
+                    1 -> takePhoto()
+                }
+            }
+            .show()
+    }
+    
+    /**
+     * 拍照
+     */
+    private fun takePhoto() {
+        val photoFile = File(gitImagesDir, "temp_photo_${System.currentTimeMillis()}.jpg")
+        val photoUri = FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            photoFile
+        )
+        currentPhotoUri = photoUri
+        cameraLauncher.launch(photoUri)
+    }
+    
+    /**
+     * 处理图片URI
+     */
+    private fun handleImageUri(uri: Uri) {
+        try {
+            // 复制图片到 Git 仓库的 images 目录
+            val imageFile = saveImageToLocal(uri)
+            if (imageFile != null) {
+                // 生成相对路径（相对于 Git 仓库根目录）
+                val imagePath = "images/${imageFile.name}"
+                // 插入Markdown图片语法（使用相对路径）
+                insertImageMarkdown(imagePath)
+                Toast.makeText(this, "图片已添加", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "保存图片失败", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e("NoteEditActivity", "处理图片失败", e)
+            Toast.makeText(this, "处理图片失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * 保存图片到 Git 仓库的 images 目录
+     */
+    private fun saveImageToLocal(uri: Uri): File? {
+        return try {
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+            
+            if (bitmap != null) {
+                // 压缩图片
+                val compressedBitmap = compressBitmap(bitmap)
+                val imageFile = File(gitImagesDir, "image_${System.currentTimeMillis()}.jpg")
+                val outputStream = FileOutputStream(imageFile)
+                compressedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+                outputStream.flush()
+                outputStream.close()
+                imageFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("NoteEditActivity", "保存图片失败", e)
+            null
+        }
+    }
+    
+    /**
+     * 压缩图片
+     */
+    private fun compressBitmap(bitmap: Bitmap): Bitmap {
+        val maxWidth = 1920
+        val maxHeight = 1920
+        
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        if (width <= maxWidth && height <= maxHeight) {
+            return bitmap
+        }
+        
+        val scale = minOf(maxWidth.toFloat() / width, maxHeight.toFloat() / height)
+        val newWidth = (width * scale).toInt()
+        val newHeight = (height * scale).toInt()
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+    
+    /**
+     * 插入图片Markdown语法
+     */
+    private fun insertImageMarkdown(imagePath: String) {
+        val editText = binding.noteContentEditText
+        val start = editText.selectionStart
+        val text = editText.text.toString()
+        // 使用相对路径，这样在不同设备上都能正确显示
+        val imageMarkdown = "![图片]($imagePath)\n"
+        val newText = text.substring(0, start) + imageMarkdown + text.substring(start)
+        editText.setText(newText)
+        editText.setSelection(start + imageMarkdown.length)
     }
     
     /**

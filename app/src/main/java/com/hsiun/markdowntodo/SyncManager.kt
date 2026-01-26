@@ -31,6 +31,7 @@ class SyncManager(
         // Git 仓库中的目录结构
         private const val DIR_TODO_LISTS = "todo_lists"
         private const val DIR_NOTES = "notes"
+        private const val DIR_IMAGES = "images"
         private const val FILE_METADATA = "metadata.json"
     }
 
@@ -957,7 +958,7 @@ class SyncManager(
         return suspendCoroutine { continuation ->
             gitManager.commitAndPush(
                 commitMessage = commitMessage,
-                filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/"),
+                filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/", "$DIR_IMAGES/"),
                 onSuccess = {
                     syncScope.launch {
                         syncListener?.onSyncSuccess("同步成功")
@@ -995,7 +996,7 @@ class SyncManager(
                 syncListener?.onSyncProgress("重新推送...")
                 gitManager.commitAndPush(
                     commitMessage = "同步更新（重试） - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}",
-                    filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/"),
+                    filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/", "$DIR_IMAGES/"),
                     onSuccess = {
                         syncScope.launch {
                             syncListener?.onSyncSuccess("同步成功（重试后）")
@@ -1075,7 +1076,7 @@ class SyncManager(
 
                 gitManager.commitAndPush(
                     commitMessage = commitMessage,
-                    filePatterns = listOf("$DIR_NOTES/"),
+                    filePatterns = listOf("$DIR_NOTES/", "$DIR_IMAGES/"),
                     onSuccess = {
                         syncListener?.onSyncStatusChanged("自动推送成功")
                     },
@@ -1161,6 +1162,24 @@ class SyncManager(
                 usedFileNames.add(fileName)
                 val noteFile = File(notesDir, fileName)
                 noteFile.writeText(note.toMarkdown())
+            }
+
+            // 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
+            val imagesDir = File(repoDir, DIR_IMAGES)
+            if (!imagesDir.exists()) {
+                imagesDir.mkdirs()
+                Log.d(TAG, "创建 images 目录: ${imagesDir.absolutePath}")
+            }
+            
+            // 列出 images 目录中的文件，用于调试
+            val imageFiles = imagesDir.listFiles()
+            if (imageFiles != null && imageFiles.isNotEmpty()) {
+                Log.d(TAG, "images 目录中有 ${imageFiles.size} 个文件:")
+                imageFiles.forEach { file ->
+                    Log.d(TAG, "  - ${file.name} (${file.length()} bytes)")
+                }
+            } else {
+                Log.d(TAG, "images 目录为空或不存在")
             }
 
             Log.d(TAG, "当前应用数据已保存到Git目录")

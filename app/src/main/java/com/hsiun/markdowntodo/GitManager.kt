@@ -206,12 +206,42 @@ class GitManager(
                                 // 添加所有指定的文件模式（包括新增、修改）
                                 filePatterns.forEach { pattern ->
                                     try {
+                                        // 对于目录模式，显式添加目录中的所有文件
+                                        if (pattern.endsWith("/")) {
+                                            val dirPath = pattern.removeSuffix("/")
+                                            val dir = File(repoDir, dirPath)
+                                            if (dir.exists() && dir.isDirectory) {
+                                                val files = dir.listFiles { file ->
+                                                    file.isFile && !file.name.startsWith(".")
+                                                }
+                                                if (files != null && files.isNotEmpty()) {
+                                                    Log.d(TAG, "目录 $dirPath 中有 ${files.size} 个文件，显式添加每个文件")
+                                                    files.forEach { file ->
+                                                        try {
+                                                            val relativePath = file.relativeTo(repoDir).path.replace("\\", "/")
+                                                            git.add()
+                                                                .addFilepattern(relativePath)
+                                                                .call()
+                                                            Log.d(TAG, "  已添加文件: $relativePath (${file.length()} bytes)")
+                                                        } catch (e: Exception) {
+                                                            Log.w(TAG, "  添加文件失败: ${file.name}", e)
+                                                        }
+                                                    }
+                                                } else {
+                                                    Log.w(TAG, "目录 $dirPath 为空")
+                                                }
+                                            } else {
+                                                Log.w(TAG, "目录 $dirPath 不存在")
+                                            }
+                                        }
+                                        
+                                        // 仍然使用模式添加，以确保所有文件都被包含
                                         git.add()
                                             .addFilepattern(pattern)
                                             .call()
                                         Log.d(TAG, "已添加文件模式: $pattern")
                                     } catch (e: Exception) {
-                                        Log.w(TAG, "添加文件模式 $pattern 失败: ${e.message}")
+                                        Log.w(TAG, "添加文件模式 $pattern 失败: ${e.message}", e)
                                     }
                                 }
                                 
@@ -227,7 +257,7 @@ class GitManager(
                                                 .call()
                                             Log.d(TAG, "已更新目录模式（包括删除）: $pattern")
                                         } catch (e: Exception) {
-                                            Log.w(TAG, "更新目录模式 $pattern 失败: ${e.message}")
+                                            Log.w(TAG, "更新目录模式 $pattern 失败: ${e.message}", e)
                                         }
                                     }
                                 }
@@ -251,6 +281,29 @@ class GitManager(
                                 val modifiedFiles = status.modified
                                 if (modifiedFiles.isNotEmpty()) {
                                     Log.d(TAG, "检测到修改的文件: ${modifiedFiles.joinToString(", ")}")
+                                }
+                                
+                                // 特别检查 images 目录的文件
+                                val imagesDir = File(repoDir, "images")
+                                if (imagesDir.exists() && imagesDir.isDirectory) {
+                                    val imageFiles = imagesDir.listFiles { file ->
+                                        file.isFile && (file.name.endsWith(".jpg", ignoreCase = true) ||
+                                                file.name.endsWith(".jpeg", ignoreCase = true) ||
+                                                file.name.endsWith(".png", ignoreCase = true) ||
+                                                file.name.endsWith(".gif", ignoreCase = true) ||
+                                                file.name.endsWith(".webp", ignoreCase = true))
+                                    }
+                                    if (imageFiles != null && imageFiles.isNotEmpty()) {
+                                        Log.d(TAG, "images 目录中有 ${imageFiles.size} 个图片文件")
+                                        // 检查这些文件是否在 Git 状态中
+                                        imageFiles.forEach { file ->
+                                            val relativePath = file.relativeTo(repoDir).path.replace("\\", "/")
+                                            val isAdded = addedFiles.contains(relativePath)
+                                            val isModified = modifiedFiles.contains(relativePath)
+                                            val isUntracked = status.untracked.contains(relativePath)
+                                            Log.d(TAG, "  图片文件: $relativePath - 新增: $isAdded, 修改: $isModified, 未跟踪: $isUntracked")
+                                        }
+                                    }
                                 }
 
                                 // 提交

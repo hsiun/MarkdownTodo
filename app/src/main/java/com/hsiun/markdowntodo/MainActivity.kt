@@ -210,6 +210,11 @@ class MainActivity : AppCompatActivity(),
         if (!notesDir.exists()) {
             notesDir.mkdirs()
         }
+
+        val imagesDir = File(gitRepoDir, "images")
+        if (!imagesDir.exists()) {
+            imagesDir.mkdirs()
+        }
     }
     private fun setupViewPager() {
         mainPagerAdapter = MainPagerAdapter(this)
