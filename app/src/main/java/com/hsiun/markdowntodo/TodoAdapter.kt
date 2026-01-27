@@ -81,23 +81,27 @@ class TodoAdapter(
 
         holder.titleText.text = todo.title
 
-        // 优化字体渲染
-        holder.titleText.typeface = Typeface.DEFAULT
-        holder.titleText.paintFlags = holder.titleText.paintFlags or
-                Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG
-
+        // 优化字体渲染，解决中文锯齿问题
+        holder.titleText.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        
+        // 设置字体渲染提示（必须在设置paintFlags之前）
+        holder.titleText.paint.isSubpixelText = true
+        holder.titleText.paint.isAntiAlias = true
+        holder.titleText.paint.isLinearText = true
+        
         // 移除旧的监听器，防止重复绑定
         holder.checkbox.setOnCheckedChangeListener(null)
 
         // 设置复选框状态
         holder.checkbox.isChecked = todo.isCompleted
 
-        // 根据完成状态设置样式
+        // 根据完成状态设置样式（保留字体渲染优化标志）
+        val baseFlags = Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG
         if (todo.isCompleted) {
-            holder.titleText.paintFlags = Paint.STRIKE_THRU_TEXT_FLAG
+            holder.titleText.paintFlags = baseFlags or Paint.STRIKE_THRU_TEXT_FLAG
             holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.darker_gray))
         } else {
-            holder.titleText.paintFlags = 0
+            holder.titleText.paintFlags = baseFlags
             holder.titleText.setTextColor(ContextCompat.getColor(holder.itemView.context, android.R.color.black))
         }
 
@@ -152,9 +156,10 @@ class TodoAdapter(
                         "待办状态改变: ID=${todo.id}, 标题='${todo.title}', 新状态=$isChecked"
                     )
 
-                    // 立即更新视觉反馈
+                    // 立即更新视觉反馈（保留字体渲染优化标志）
+                    val baseFlags = Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG
                     if (isChecked) {
-                        holder.titleText.paintFlags = Paint.STRIKE_THRU_TEXT_FLAG
+                        holder.titleText.paintFlags = baseFlags or Paint.STRIKE_THRU_TEXT_FLAG
                         holder.titleText.setTextColor(
                             ContextCompat.getColor(
                                 holder.itemView.context,
@@ -162,7 +167,7 @@ class TodoAdapter(
                             )
                         )
                     } else {
-                        holder.titleText.paintFlags = 0
+                        holder.titleText.paintFlags = baseFlags
                         holder.titleText.setTextColor(
                             ContextCompat.getColor(
                                 holder.itemView.context,

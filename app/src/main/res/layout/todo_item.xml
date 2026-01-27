@@ -54,7 +54,8 @@
                 android:textAllCaps="false"
                 android:textColor="#333333"
                 android:textSize="16sp"
-                android:textStyle="normal" />
+                android:textStyle="normal"
+                android:typeface="normal" />
 
             <!-- 删除按钮（默认隐藏） -->
             <ImageButton
