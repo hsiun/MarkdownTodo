@@ -107,6 +107,40 @@ class MainActivity : AppCompatActivity(),
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 设置状态栏颜色为白色
+        window.statusBarColor = android.graphics.Color.WHITE
+
+        // 设置状态栏图标为深色（适配白色背景）
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            var flags = window.decorView.systemUiVisibility
+            flags = flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            window.decorView.systemUiVisibility = flags
+        }
+
+        // Android 11+ 使用新的API
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            window.insetsController?.setSystemBarsAppearance(
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+            )
+        }
+
+        // 处理系统窗口插入，避免内容与状态栏重叠
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            // 为顶部栏添加状态栏高度的 padding，避免内容与状态栏重叠
+            // 使用原始 padding (16dp) + 状态栏高度
+            val topPaddingDp = 16
+            val topPaddingPx = (topPaddingDp * resources.displayMetrics.density).toInt()
+            binding.topBarContainer.setPadding(
+                binding.topBarContainer.paddingLeft,
+                systemBars.top + topPaddingPx,
+                binding.topBarContainer.paddingRight,
+                binding.topBarContainer.paddingBottom
+            )
+            insets
+        }
+
         supportActionBar?.setDisplayShowTitleEnabled(false)
 
         // 初始化SharedPreferences
