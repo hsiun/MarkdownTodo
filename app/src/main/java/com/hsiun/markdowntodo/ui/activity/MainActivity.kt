@@ -1,6 +1,5 @@
 package com.hsiun.markdowntodo.ui.activity
 
-import android.R
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
@@ -32,22 +31,23 @@ import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
-import com.hsiun.markdowntodo.ui.dialog.NoteDialogManager
-import com.hsiun.markdowntodo.ui.fragment.NoteFragment
-import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.R
 import com.hsiun.markdowntodo.data.manager.NoteManager
-import com.hsiun.markdowntodo.ui.dialog.SettingsDialogManager
 import com.hsiun.markdowntodo.data.manager.SettingsManager
 import com.hsiun.markdowntodo.data.manager.SyncManager
-import com.hsiun.markdowntodo.ui.adapter.TodoAdapter
-import com.hsiun.markdowntodo.ui.dialog.TodoDialogManager
-import com.hsiun.markdowntodo.ui.fragment.TodoFragment
-import com.hsiun.markdowntodo.data.model.TodoItem
-import com.hsiun.markdowntodo.ui.dialog.TodoListDialog
 import com.hsiun.markdowntodo.data.manager.TodoListManager
-import com.hsiun.markdowntodo.ui.adapter.TodoListSpinnerAdapter
 import com.hsiun.markdowntodo.data.manager.TodoManager
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.data.model.TodoItem
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
+import com.hsiun.markdowntodo.ui.adapter.TodoAdapter
+import com.hsiun.markdowntodo.ui.adapter.TodoListSpinnerAdapter
+import com.hsiun.markdowntodo.ui.dialog.NoteDialogManager
+import com.hsiun.markdowntodo.ui.dialog.SettingsDialogManager
+import com.hsiun.markdowntodo.ui.dialog.TodoDialogManager
+import com.hsiun.markdowntodo.ui.dialog.TodoListDialog
+import com.hsiun.markdowntodo.ui.fragment.NoteFragment
+import com.hsiun.markdowntodo.ui.fragment.TodoFragment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -290,8 +290,8 @@ class MainActivity : AppCompatActivity(),
                 setTextColor(
                     ColorStateList(
                         arrayOf(
-                            intArrayOf(R.attr.state_selected),
-                            intArrayOf(-R.attr.state_selected)
+                            intArrayOf(android.R.attr.state_selected),
+                            intArrayOf(-android.R.attr.state_selected)
                         ),
                         intArrayOf(
                             Color.parseColor("#FF9800"), // 选中时的颜色
@@ -548,21 +548,21 @@ class MainActivity : AppCompatActivity(),
         runOnUiThread {
             Log.d("MainActivity-Sync", "状态变化: $status")
             if (status.contains("正在同步")) {
-                binding.syncStatusIcon.setImageResource(com.hsiun.markdowntodo.R.drawable.ic_sync)
+                binding.syncStatusIcon.setImageResource(R.drawable.ic_sync)
                 startSyncAnimation()
             } else {
                 stopSyncAnimation()
                 binding.syncStatusIcon.setImageResource(when {
-                    status.contains("成功") -> com.hsiun.markdowntodo.R.drawable.ic_check_circle
-                    status.contains("失败") -> com.hsiun.markdowntodo.R.drawable.ic_error_circle
-                    status.contains("未连接") -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
-                    else -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
+                    status.contains("成功") -> R.drawable.ic_check_circle
+                    status.contains("失败") -> R.drawable.ic_error_circle
+                    status.contains("未连接") -> R.drawable.ic_circle_outline
+                    else -> R.drawable.ic_circle_outline
                 })
 
                 // 自动清除状态
                 if (status.isNotEmpty()) {
                     Handler(Looper.getMainLooper()).postDelayed({
-                        binding.syncStatusIcon.setImageResource(com.hsiun.markdowntodo.R.drawable.ic_circle_outline)
+                        binding.syncStatusIcon.setImageResource(R.drawable.ic_circle_outline)
                     }, 3000)
                 }
             }
@@ -706,15 +706,15 @@ class MainActivity : AppCompatActivity(),
     private fun updateSyncIndicator(status: String = "", color: Int? = null) {
         if (status.isNotEmpty()) {
             if (status.contains("正在同步")) {
-                binding.syncStatusIcon.setImageResource(com.hsiun.markdowntodo.R.drawable.ic_sync)
+                binding.syncStatusIcon.setImageResource(R.drawable.ic_sync)
                 startSyncAnimation()
             } else {
                 stopSyncAnimation()
                 binding.syncStatusIcon.setImageResource(when {
-                    status.contains("成功") -> com.hsiun.markdowntodo.R.drawable.ic_check_circle
-                    status.contains("失败") -> com.hsiun.markdowntodo.R.drawable.ic_error_circle
-                    status.contains("未连接") -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
-                    else -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
+                    status.contains("成功") -> R.drawable.ic_check_circle
+                    status.contains("失败") -> R.drawable.ic_error_circle
+                    status.contains("未连接") -> R.drawable.ic_circle_outline
+                    else -> R.drawable.ic_circle_outline
                 })
             }
         }

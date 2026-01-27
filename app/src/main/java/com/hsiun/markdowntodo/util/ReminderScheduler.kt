@@ -1,7 +1,6 @@
 package com.hsiun.markdowntodo.util
 
 import android.Manifest
-import android.R
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -14,6 +13,7 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.hsiun.markdowntodo.R
 import com.hsiun.markdowntodo.data.model.RepeatType
 import com.hsiun.markdowntodo.data.model.TodoItem
 import com.hsiun.markdowntodo.receiver.TodoReminderReceiver
@@ -171,7 +171,7 @@ class ReminderScheduler {
 
                 // 构建通知
                 val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_dialog_info)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle("待办提醒")
                     .setContentText("${todo.title}")
                     .setPriority(NotificationCompat.PRIORITY_HIGH)

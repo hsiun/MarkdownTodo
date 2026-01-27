@@ -1,6 +1,5 @@
 package com.hsiun.markdowntodo.ui.activity
 
-import android.R
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -135,7 +134,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.home -> {
+            android.R.id.home -> {
                 onBackPressed()
                 true
             }
