@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.model
 
 import android.util.Log
 import java.text.SimpleDateFormat

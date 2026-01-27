@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.adapter
 
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -12,6 +12,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.hsiun.markdowntodo.R
+import com.hsiun.markdowntodo.data.model.TodoItem
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,12 +85,12 @@ class TodoAdapter(
 
         // 优化字体渲染，解决中文锯齿问题
         holder.titleText.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
-        
+
         // 设置字体渲染提示（必须在设置paintFlags之前）
         holder.titleText.paint.isSubpixelText = true
         holder.titleText.paint.isAntiAlias = true
         holder.titleText.paint.isLinearText = true
-        
+
         // 移除旧的监听器，防止重复绑定
         holder.checkbox.setOnCheckedChangeListener(null)
 
@@ -237,7 +239,10 @@ class TodoAdapter(
     // 如果需要使用createdAt字段排序，可以添加一个辅助函数
     private fun parseCreatedAtDate(todo: TodoItem): Date {
         return try {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(todo.createdAt) ?: Date(0)
+            SimpleDateFormat(
+                "yyyy-MM-dd HH:mm:ss",
+                Locale.getDefault()
+            ).parse(todo.createdAt) ?: Date(0)
         } catch (e: Exception) {
             Date(0)
         }

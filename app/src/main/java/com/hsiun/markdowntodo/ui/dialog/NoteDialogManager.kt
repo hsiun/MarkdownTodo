@@ -1,6 +1,5 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.dialog
 
-import com.hsiun.markdowntodo.NoteItem
 import android.app.AlertDialog
 import android.content.Context
 import android.text.Editable
@@ -8,6 +7,8 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.widget.Button
 import android.widget.EditText
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.R
 
 class NoteDialogManager(private val context: Context) {
 

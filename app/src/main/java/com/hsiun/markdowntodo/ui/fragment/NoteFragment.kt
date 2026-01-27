@@ -1,6 +1,6 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.fragment
 
-import com.hsiun.markdowntodo.NoteItem
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -14,7 +14,12 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.hsiun.markdowntodo.ui.adapter.NoteAdapter
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.data.manager.NoteManager
 import com.hsiun.markdowntodo.databinding.FragmentNoteBinding
+import com.hsiun.markdowntodo.ui.activity.MainActivity
+import com.hsiun.markdowntodo.ui.activity.NoteEditActivity
 
 class NoteFragment : Fragment(), NoteManager.NoteChangeListener {
 
@@ -46,7 +51,7 @@ class NoteFragment : Fragment(), NoteManager.NoteChangeListener {
             mutableListOf(),
             onNoteClicked = { note ->
                 // 启动编辑页面
-                val intent = android.content.Intent(requireContext(), NoteEditActivity::class.java).apply {
+                val intent = Intent(requireContext(), NoteEditActivity::class.java).apply {
                     putExtra("uuid", note.uuid)
                     putExtra("isNewNote", false)
                 }
@@ -69,7 +74,7 @@ class NoteFragment : Fragment(), NoteManager.NoteChangeListener {
         // 初始化时显示空状态
         updateEmptyView()
     }
-    
+
     /**
      * 设置左滑删除功能
      */

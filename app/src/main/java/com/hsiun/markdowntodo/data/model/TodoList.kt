@@ -1,7 +1,9 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.model
 
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 
 // 待办列表数据结构
 data class TodoList(

@@ -1,10 +1,17 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.activity
 
+import android.R
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
-import android.widget.CheckBox
+import android.view.View
+import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.hsiun.markdowntodo.data.manager.SettingsManager
 import com.hsiun.markdowntodo.databinding.ActivitySettingsBinding
 
 class SettingsActivity : AppCompatActivity() {
@@ -27,31 +34,31 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.title = "设置"
 
         // 设置工具栏背景为白色，移除阴影
-        binding.toolbar.setBackgroundColor(android.graphics.Color.WHITE)
-        binding.toolbar.setTitleTextColor(android.graphics.Color.BLACK)
+        binding.toolbar.setBackgroundColor(Color.WHITE)
+        binding.toolbar.setTitleTextColor(Color.BLACK)
         binding.toolbar.elevation = 0f
 
         // 设置状态栏颜色为白色
-        window.statusBarColor = android.graphics.Color.WHITE
+        window.statusBarColor = Color.WHITE
 
         // 设置状态栏图标为深色（适配白色背景）
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             var flags = window.decorView.systemUiVisibility
-            flags = flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
             window.decorView.systemUiVisibility = flags
         }
 
         // Android 11+ 使用新的API
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.setSystemBarsAppearance(
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
             )
         }
 
         // 处理系统窗口插入，避免内容与状态栏重叠
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
-            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             // 为工具栏添加状态栏高度的 padding，避免内容与状态栏重叠
             binding.toolbar.setPadding(
                 binding.toolbar.paddingLeft,
@@ -128,7 +135,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            android.R.id.home -> {
+            R.id.home -> {
                 onBackPressed()
                 true
             }

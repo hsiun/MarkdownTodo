@@ -24,7 +24,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.activity.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -34,13 +34,13 @@
         </activity>
 
         <activity
-            android:name=".NoteEditActivity"
+            android:name=".ui.activity.NoteEditActivity"
             android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
 
         <activity
-            android:name=".SettingsActivity"
+            android:name=".ui.activity.SettingsActivity"
             android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
             android:exported="false" />
             
@@ -57,7 +57,7 @@
 
         <!-- 添加广播接收器 -->
         <receiver
-            android:name=".TodoReminderReceiver"
+            android:name=".receiver.TodoReminderReceiver"
             android:exported="false"
             android:enabled="true">
             <intent-filter>

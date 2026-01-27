@@ -1,8 +1,12 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.manager
 
 import android.content.Context
+import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.hsiun.markdowntodo.data.model.RepeatType
+import com.hsiun.markdowntodo.data.model.TodoItem
+import com.hsiun.markdowntodo.util.ReminderScheduler
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -151,7 +155,7 @@ class TodoManager(private val context: Context) {
         if (items.size > 1) {
             Log.w(TAG, "发现多个ID为 $id 的待办事项，返回第一个")
             // 触发修复
-            android.os.Handler(Looper.getMainLooper()).post {
+            Handler(Looper.getMainLooper()).post {
                 detectAndFixDuplicateIds()
             }
         }
@@ -224,10 +228,13 @@ class TodoManager(private val context: Context) {
                 repeatType = repeatType,
                 originalRemindTime = if (setReminder) remindTime else -1L,
                 nextRemindTime = if (setReminder && repeatType != RepeatType.NONE.value) remindTime else -1L,
-                updatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                updatedAt = SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss",
+                    Locale.getDefault()
+                ).format(Date())
             )
 
-            Log.d(TAG, "添加待办事项: ID=$newId, 标题='$title', 提醒时间=${if (setReminder) remindTime else "未设置"}, 重复类型=${RepeatType.fromValue(repeatType).displayName}")
+            Log.d(TAG, "添加待办事项: ID=$newId, 标题='$title', 提醒时间=${if (setReminder) remindTime else "未设置"}, 重复类型=${RepeatType.Companion.fromValue(repeatType).displayName}")
 
             todos.add(todo)
             saveCurrentListTodos()
@@ -235,7 +242,7 @@ class TodoManager(private val context: Context) {
 
             if (setReminder && remindTime > 0) {
                 // 设置提醒
-                ReminderScheduler.scheduleReminder(context, todo)
+                ReminderScheduler.Companion.scheduleReminder(context, todo)
                 Log.d(TAG, "设置了提醒: ${todo.formatRemindTime()}")
             }
 
@@ -263,7 +270,7 @@ class TodoManager(private val context: Context) {
 
             // 如果之前有提醒，先取消
             if (oldTodo.remindTime > 0 || oldTodo.nextRemindTime > 0) {
-                ReminderScheduler.cancelReminder(context, oldTodo)
+                ReminderScheduler.Companion.cancelReminder(context, oldTodo)
             }
 
             val updatedTodo = oldTodo.copy(
@@ -284,8 +291,8 @@ class TodoManager(private val context: Context) {
 
             if (setReminder && remindTime > 0) {
                 // 设置新的提醒
-                ReminderScheduler.scheduleReminder(context, updatedTodo)
-                Log.d(TAG, "更新了提醒: ${updatedTodo.formatRemindTime()}, 重复类型=${RepeatType.fromValue(repeatType).displayName}")
+                ReminderScheduler.Companion.scheduleReminder(context, updatedTodo)
+                Log.d(TAG, "更新了提醒: ${updatedTodo.formatRemindTime()}, 重复类型=${RepeatType.Companion.fromValue(repeatType).displayName}")
             }
 
             todoChangeListener?.onTodoUpdated(updatedTodo)
@@ -312,10 +319,10 @@ class TodoManager(private val context: Context) {
 
             // 如果标记为完成，取消提醒
             if (updatedTodo.isCompleted && (oldTodo.remindTime > 0 || oldTodo.nextRemindTime > 0)) {
-                ReminderScheduler.cancelReminder(context, updatedTodo)
+                ReminderScheduler.Companion.cancelReminder(context, updatedTodo)
             } else if (!updatedTodo.isCompleted && oldTodo.remindTime > 0) {
                 // 如果取消完成状态，重新调度提醒
-                ReminderScheduler.scheduleReminder(context, updatedTodo)
+                ReminderScheduler.Companion.scheduleReminder(context, updatedTodo)
             }
 
             todos[todoIndex] = updatedTodo
@@ -341,7 +348,7 @@ class TodoManager(private val context: Context) {
 
             // 取消提醒
             if (todoToDelete.remindTime > 0 || todoToDelete.nextRemindTime > 0) {
-                ReminderScheduler.cancelReminder(context, todoToDelete)
+                ReminderScheduler.Companion.cancelReminder(context, todoToDelete)
             }
 
             saveCurrentListTodos()
@@ -407,7 +414,7 @@ class TodoManager(private val context: Context) {
                 saveCurrentListTodos()
 
                 // 调度下一次提醒
-                ReminderScheduler.scheduleReminder(context, updatedTodo)
+                ReminderScheduler.Companion.scheduleReminder(context, updatedTodo)
                 Log.d(TAG, "已调度下次重复提醒: ${updatedTodo.title} at ${updatedTodo.formatRemindTime()}")
             }
         } else {
@@ -435,7 +442,7 @@ class TodoManager(private val context: Context) {
 
         todosToRemind.forEach { todo ->
             // 触发提醒
-            ReminderScheduler.triggerReminder(context, todo)
+            ReminderScheduler.Companion.triggerReminder(context, todo)
             // 处理重复逻辑
             handleRepeatedReminder(todo.id)
         }
@@ -444,7 +451,7 @@ class TodoManager(private val context: Context) {
     fun rescheduleAllReminders() {
         val todosWithReminder = getTodosWithReminder()
         todosWithReminder.forEach { todo ->
-            ReminderScheduler.scheduleReminder(context, todo)
+            ReminderScheduler.Companion.scheduleReminder(context, todo)
         }
         Log.d(TAG, "重新调度了 ${todosWithReminder.size} 个提醒")
     }
@@ -454,7 +461,7 @@ class TodoManager(private val context: Context) {
         // 先取消所有现有的提醒
         todos.forEach { todo ->
             if (todo.remindTime > 0 || todo.nextRemindTime > 0) {
-                ReminderScheduler.cancelReminder(context, todo)
+                ReminderScheduler.Companion.cancelReminder(context, todo)
             }
         }
 
@@ -561,7 +568,7 @@ class TodoManager(private val context: Context) {
                 if (lines.size > 2) {
                     lines.drop(2)
                         .filter { it.isNotBlank() }
-                        .mapNotNull { TodoItem.fromMarkdownLine(it) }
+                        .mapNotNull { TodoItem.Companion.fromMarkdownLine(it) }
                         .toList()
                 } else {
                     emptyList()

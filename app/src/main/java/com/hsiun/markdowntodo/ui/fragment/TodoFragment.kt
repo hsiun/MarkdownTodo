@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.fragment
 
 import android.graphics.Canvas
 import android.graphics.Color
@@ -14,7 +14,11 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.hsiun.markdowntodo.ui.adapter.TodoAdapter
+import com.hsiun.markdowntodo.data.model.TodoItem
+import com.hsiun.markdowntodo.data.manager.TodoManager
 import com.hsiun.markdowntodo.databinding.FragmentTodoBinding
+import com.hsiun.markdowntodo.ui.activity.MainActivity
 
 class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
 

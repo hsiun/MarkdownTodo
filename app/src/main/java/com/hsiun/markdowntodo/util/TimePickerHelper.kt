@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.util
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -68,12 +68,14 @@ class TimePickerHelper(private val context: Context) {
             calendar.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
                     calendar.get(Calendar.MONTH) == today.get(Calendar.MONTH) &&
                     calendar.get(Calendar.DAY_OF_MONTH) == today.get(Calendar.DAY_OF_MONTH) -> {
-                "今天 ${String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))}"
+                "今天 ${String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(
+                    Calendar.MINUTE))}"
             }
             calendar.get(Calendar.YEAR) == tomorrow.get(Calendar.YEAR) &&
                     calendar.get(Calendar.MONTH) == tomorrow.get(Calendar.MONTH) &&
                     calendar.get(Calendar.DAY_OF_MONTH) == tomorrow.get(Calendar.DAY_OF_MONTH) -> {
-                "明天 ${String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))}"
+                "明天 ${String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(
+                    Calendar.MINUTE))}"
             }
             else -> {
                 String.format("%d-%02d-%02d %02d:%02d",

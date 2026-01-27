@@ -1,15 +1,17 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.dialog
 
 import android.app.Dialog
 import android.content.Context
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.NumberPicker
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
-import java.util.*
+import com.hsiun.markdowntodo.R
+import java.util.Calendar
 
 class OneRowTimePickerDialog : DialogFragment() {
 
@@ -259,7 +261,7 @@ class OneRowTimePickerDialog : DialogFragment() {
         // 确保对话框大小合适
         dialog?.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.95).toInt(),
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.WRAP_CONTENT
         )
     }
 }

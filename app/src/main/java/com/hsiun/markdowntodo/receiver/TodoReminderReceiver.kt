@@ -1,9 +1,13 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.receiver
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.hsiun.markdowntodo.data.model.RepeatType
+import com.hsiun.markdowntodo.data.model.TodoItem
+import com.hsiun.markdowntodo.ui.activity.MainActivity
+import com.hsiun.markdowntodo.util.ReminderScheduler
 
 class TodoReminderReceiver : BroadcastReceiver() {
 
@@ -26,16 +30,16 @@ class TodoReminderReceiver : BroadcastReceiver() {
         }
 
         // 获取MainActivity实例
-        val mainActivity = MainActivity.getInstance()
+        val mainActivity = MainActivity.Companion.getInstance()
         if (mainActivity != null) {
             // 如果应用正在运行，通过MainActivity处理
             val todo = mainActivity.todoManager.getTodoById(todoId)
             if (todo != null) {
                 // 触发提醒通知
-                ReminderScheduler.triggerReminder(context, todo)
+                ReminderScheduler.Companion.triggerReminder(context, todo)
                 // 处理重复逻辑
                 mainActivity.todoManager.handleRepeatedReminder(todoId)
-                Log.d(TAG, "已处理提醒: ${todo.title}, 重复类型=${RepeatType.fromValue(repeatType).displayName}")
+                Log.d(TAG, "已处理提醒: ${todo.title}, 重复类型=${RepeatType.Companion.fromValue(repeatType).displayName}")
             }
         } else {
             // 如果应用不在运行，创建临时TodoItem并发送通知
@@ -46,7 +50,7 @@ class TodoReminderReceiver : BroadcastReceiver() {
                 remindTime = remindTime,
                 repeatType = repeatType
             )
-            ReminderScheduler.triggerReminder(context, tempTodo)
+            ReminderScheduler.Companion.triggerReminder(context, tempTodo)
 
             // 下次应用启动时会从文件加载并更新状态
             Log.d(TAG, "应用未运行，发送提醒通知: $todoTitle")

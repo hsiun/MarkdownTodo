@@ -1,11 +1,12 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.activity
 
-import com.hsiun.markdowntodo.NoteItem
+import android.R
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +14,10 @@ import android.preference.PreferenceManager
 import android.util.Log
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsetsController
+import android.view.animation.Animation
+import android.view.animation.LinearInterpolator
+import android.view.animation.RotateAnimation
 import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -20,11 +25,28 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
+import com.hsiun.markdowntodo.ui.dialog.NoteDialogManager
+import com.hsiun.markdowntodo.ui.fragment.NoteFragment
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.data.manager.NoteManager
+import com.hsiun.markdowntodo.ui.dialog.SettingsDialogManager
+import com.hsiun.markdowntodo.data.manager.SettingsManager
+import com.hsiun.markdowntodo.data.manager.SyncManager
+import com.hsiun.markdowntodo.ui.adapter.TodoAdapter
+import com.hsiun.markdowntodo.ui.dialog.TodoDialogManager
+import com.hsiun.markdowntodo.ui.fragment.TodoFragment
+import com.hsiun.markdowntodo.data.model.TodoItem
+import com.hsiun.markdowntodo.ui.dialog.TodoListDialog
+import com.hsiun.markdowntodo.data.manager.TodoListManager
+import com.hsiun.markdowntodo.ui.adapter.TodoListSpinnerAdapter
+import com.hsiun.markdowntodo.data.manager.TodoManager
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,14 +55,14 @@ import java.io.File
 
 /**
  * 主活动类，负责协调应用的主要功能
- * 
+ *
  * 功能包括：
  * - 管理待办事项和笔记的显示
  * - 处理页面切换（待办/笔记）
  * - 协调各个管理器（TodoManager、NoteManager、SyncManager等）
  * - 处理用户交互和事件回调
  * - 管理Git同步功能
- * 
+ *
  * @author hsiun
  */
 class MainActivity : AppCompatActivity(),
@@ -108,26 +130,26 @@ class MainActivity : AppCompatActivity(),
         setContentView(binding.root)
 
         // 设置状态栏颜色为白色
-        window.statusBarColor = android.graphics.Color.WHITE
+        window.statusBarColor = Color.WHITE
 
         // 设置状态栏图标为深色（适配白色背景）
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             var flags = window.decorView.systemUiVisibility
-            flags = flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
             window.decorView.systemUiVisibility = flags
         }
 
         // Android 11+ 使用新的API
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.setSystemBarsAppearance(
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
             )
         }
 
         // 处理系统窗口插入，避免内容与状态栏重叠
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
-            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             // 为顶部栏添加状态栏高度的 padding，避免内容与状态栏重叠
             // 使用原始 padding (16dp) + 状态栏高度
             val topPaddingDp = 16
@@ -268,8 +290,8 @@ class MainActivity : AppCompatActivity(),
                 setTextColor(
                     ColorStateList(
                         arrayOf(
-                            intArrayOf(android.R.attr.state_selected),
-                            intArrayOf(-android.R.attr.state_selected)
+                            intArrayOf(R.attr.state_selected),
+                            intArrayOf(-R.attr.state_selected)
                         ),
                         intArrayOf(
                             Color.parseColor("#FF9800"), // 选中时的颜色
@@ -363,7 +385,7 @@ class MainActivity : AppCompatActivity(),
     private fun setupListeners() {
         // 设置按钮点击
         binding.settingsButton.setOnClickListener {
-            val intent = android.content.Intent(this, SettingsActivity::class.java)
+            val intent = Intent(this, SettingsActivity::class.java)
             startActivity(intent)
         }
     }
@@ -526,21 +548,21 @@ class MainActivity : AppCompatActivity(),
         runOnUiThread {
             Log.d("MainActivity-Sync", "状态变化: $status")
             if (status.contains("正在同步")) {
-                binding.syncStatusIcon.setImageResource(R.drawable.ic_sync)
+                binding.syncStatusIcon.setImageResource(com.hsiun.markdowntodo.R.drawable.ic_sync)
                 startSyncAnimation()
             } else {
                 stopSyncAnimation()
                 binding.syncStatusIcon.setImageResource(when {
-                    status.contains("成功") -> R.drawable.ic_check_circle
-                    status.contains("失败") -> R.drawable.ic_error_circle
-                    status.contains("未连接") -> R.drawable.ic_circle_outline
-                    else -> R.drawable.ic_circle_outline
+                    status.contains("成功") -> com.hsiun.markdowntodo.R.drawable.ic_check_circle
+                    status.contains("失败") -> com.hsiun.markdowntodo.R.drawable.ic_error_circle
+                    status.contains("未连接") -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
+                    else -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
                 })
 
                 // 自动清除状态
                 if (status.isNotEmpty()) {
                     Handler(Looper.getMainLooper()).postDelayed({
-                        binding.syncStatusIcon.setImageResource(R.drawable.ic_circle_outline)
+                        binding.syncStatusIcon.setImageResource(com.hsiun.markdowntodo.R.drawable.ic_circle_outline)
                     }, 3000)
                 }
             }
@@ -593,7 +615,7 @@ class MainActivity : AppCompatActivity(),
 
     /**
      * 执行同步操作
-     * 
+     *
      * @param isManualRefresh 是否为手动刷新
      */
     private fun performSync(isManualRefresh: Boolean = false) {
@@ -684,36 +706,36 @@ class MainActivity : AppCompatActivity(),
     private fun updateSyncIndicator(status: String = "", color: Int? = null) {
         if (status.isNotEmpty()) {
             if (status.contains("正在同步")) {
-                binding.syncStatusIcon.setImageResource(R.drawable.ic_sync)
+                binding.syncStatusIcon.setImageResource(com.hsiun.markdowntodo.R.drawable.ic_sync)
                 startSyncAnimation()
             } else {
                 stopSyncAnimation()
                 binding.syncStatusIcon.setImageResource(when {
-                    status.contains("成功") -> R.drawable.ic_check_circle
-                    status.contains("失败") -> R.drawable.ic_error_circle
-                    status.contains("未连接") -> R.drawable.ic_circle_outline
-                    else -> R.drawable.ic_circle_outline
+                    status.contains("成功") -> com.hsiun.markdowntodo.R.drawable.ic_check_circle
+                    status.contains("失败") -> com.hsiun.markdowntodo.R.drawable.ic_error_circle
+                    status.contains("未连接") -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
+                    else -> com.hsiun.markdowntodo.R.drawable.ic_circle_outline
                 })
             }
         }
     }
-    
+
     /**
      * 启动同步图标旋转动画
      */
     private fun startSyncAnimation() {
-        val rotation = android.view.animation.RotateAnimation(
+        val rotation = RotateAnimation(
             0f, 360f,
-            android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f,
-            android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f
+            Animation.RELATIVE_TO_SELF, 0.5f,
+            Animation.RELATIVE_TO_SELF, 0.5f
         ).apply {
             duration = 1000
-            repeatCount = android.view.animation.Animation.INFINITE
-            interpolator = android.view.animation.LinearInterpolator()
+            repeatCount = Animation.INFINITE
+            interpolator = LinearInterpolator()
         }
         binding.syncStatusIcon.startAnimation(rotation)
     }
-    
+
     /**
      * 停止同步图标旋转动画
      */
@@ -753,7 +775,7 @@ class MainActivity : AppCompatActivity(),
                         // 2. 立即验证删除
                         var isDeleted = noteManager.verifyNoteDeleted(note.uuid)
                         Log.d("MainActivity", "第一次验证结果: $isDeleted")
-                        
+
                         // 3. 如果删除失败，尝试强制删除
                         if (!isDeleted) {
                             Log.w("MainActivity", "第一次删除验证失败，尝试强制删除")

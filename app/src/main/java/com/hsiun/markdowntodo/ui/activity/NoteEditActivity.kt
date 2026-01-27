@@ -1,36 +1,45 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.activity
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsetsController
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.R
 import com.hsiun.markdowntodo.databinding.ActivityNoteEditBinding
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
-import io.noties.markwon.linkify.LinkifyPlugin
-import io.noties.markwon.image.ImagesPlugin
 import io.noties.markwon.image.ImageItem
+import io.noties.markwon.image.ImagesPlugin
 import io.noties.markwon.image.SchemeHandler
+import io.noties.markwon.linkify.LinkifyPlugin
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
+import kotlin.math.abs
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -40,23 +49,23 @@ class NoteEditActivity : AppCompatActivity() {
     private var isEditMode: Boolean = false
     private lateinit var mainActivity: MainActivity
     private var originalNote: NoteItem? = null
-    
+
     // 用于区分点击和滑动的变量
     private var touchStartY = 0f
     private var isScrolling = false
-    
+
     // 用于工具栏显示/隐藏的变量
     private var isToolbarVisible = true
     private var isScrollListenerEnabled = false
     private var lastScrollY = 0
-    
+
     // Markdown 渲染器
     private lateinit var markwon: Markwon
-    
+
     // 用于撤销的原始内容
     private var originalTitle: String = ""
     private var originalContent: String = ""
-    
+
     // 图片相关
     private var currentPhotoUri: Uri? = null
     // Git 仓库中的图片目录
@@ -68,14 +77,14 @@ class NoteEditActivity : AppCompatActivity() {
         }
         dir
     }
-    
+
     // 图片选择器
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { handleImageUri(it) }
     }
-    
+
     // 相机拍照
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -84,7 +93,7 @@ class NoteEditActivity : AppCompatActivity() {
             currentPhotoUri?.let { handleImageUri(it) }
         }
     }
-    
+
     // 权限请求
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -113,33 +122,33 @@ class NoteEditActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowTitleEnabled(false)
-        
+
         // 设置工具栏背景为白色，移除阴影
-        binding.toolbar.setBackgroundColor(android.graphics.Color.WHITE)
-        binding.toolbar.setTitleTextColor(android.graphics.Color.BLACK)
+        binding.toolbar.setBackgroundColor(Color.WHITE)
+        binding.toolbar.setTitleTextColor(Color.BLACK)
         binding.toolbar.elevation = 0f
-        
+
         // 设置状态栏颜色为白色
-        window.statusBarColor = android.graphics.Color.WHITE
-        
+        window.statusBarColor = Color.WHITE
+
         // 设置状态栏图标为深色（适配白色背景）
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             var flags = window.decorView.systemUiVisibility
-            flags = flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
             window.decorView.systemUiVisibility = flags
         }
-        
+
         // Android 11+ 使用新的API
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.setSystemBarsAppearance(
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
             )
         }
 
         // 处理系统窗口插入，避免内容与状态栏重叠
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
-            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             // 为工具栏添加状态栏高度的 padding，避免内容与状态栏重叠
             binding.toolbar.setPadding(
                 binding.toolbar.paddingLeft,
@@ -158,7 +167,7 @@ class NoteEditActivity : AppCompatActivity() {
 
         // 初始化 Markdown 渲染器（必须在 enterViewMode 之前）
         initMarkwon()
-        
+
         // 设置 Markdown 快捷按钮
         setupMarkdownButtons()
 
@@ -190,14 +199,14 @@ class NoteEditActivity : AppCompatActivity() {
             return
         }
     }
-    
+
     /**
      * 初始化 Markdown 渲染器
      */
     private fun initMarkwon() {
         try {
             val repoDir = File(filesDir, "git_repo")
-            
+
             markwon = Markwon.builder(this)
                 .usePlugin(StrikethroughPlugin.create())  // 删除线支持
                 .usePlugin(TablePlugin.create(this))       // 表格支持
@@ -208,7 +217,7 @@ class NoteEditActivity : AppCompatActivity() {
                         // 添加自定义的 SchemeHandler 来处理 file:// 路径
                         // 相对路径已经在预处理阶段转换为 file:// 路径
                         plugin.addSchemeHandler(object : SchemeHandler() {
-                            override fun handle(raw: String, uri: android.net.Uri): ImageItem {
+                            override fun handle(raw: String, uri: Uri): ImageItem {
                                 Log.d("NoteEditActivity", "SchemeHandler 被调用: raw=$raw, uri=$uri")
                                 return try {
                                     // 移除 file:// 前缀
@@ -218,9 +227,9 @@ class NoteEditActivity : AppCompatActivity() {
                                         raw
                                     }
                                     val file = File(filePath)
-                                    
+
                                     Log.d("NoteEditActivity", "尝试加载图片: ${file.absolutePath}, 存在: ${file.exists()}")
-                                    
+
                                     if (file.exists() && file.canRead()) {
                                         val inputStream = FileInputStream(file)
                                         // 根据文件扩展名确定 content-type
@@ -234,7 +243,7 @@ class NoteEditActivity : AppCompatActivity() {
                                         ImageItem.withDecodingNeeded(contentType, inputStream)
                                     } else {
                                         Log.e("NoteEditActivity", "图片文件不存在或无法读取: ${file.absolutePath}")
-                                        throw java.io.FileNotFoundException("图片文件不存在: ${file.absolutePath}")
+                                        throw FileNotFoundException("图片文件不存在: ${file.absolutePath}")
                                     }
                                 } catch (e: Exception) {
                                     Log.e("NoteEditActivity", "加载图片失败: $raw", e)
@@ -262,7 +271,7 @@ class NoteEditActivity : AppCompatActivity() {
             Log.d("NoteEditActivity", "使用基本 Markwon 配置")
         }
     }
-    
+
     /**
      * 预处理 Markdown 内容，将相对路径转换为 file:// 绝对路径
      */
@@ -270,11 +279,11 @@ class NoteEditActivity : AppCompatActivity() {
         val repoDir = File(filesDir, "git_repo")
         // 匹配 Markdown 图片语法: ![alt](path)
         val pattern = Regex("""!\[([^\]]*)\]\(([^)]+)\)""")
-        
+
         return pattern.replace(content) { matchResult ->
             val altText = matchResult.groupValues[1]
             val imagePath = matchResult.groupValues[2]
-            
+
             // 如果已经是 file:// 路径，直接返回
             if (imagePath.startsWith("file://")) {
                 matchResult.value
@@ -290,7 +299,7 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
     }
-    
+
     /**
      * 进入查看模式
      */
@@ -300,23 +309,23 @@ class NoteEditActivity : AppCompatActivity() {
             Log.e("NoteEditActivity", "markwon 未初始化，尝试重新初始化")
             initMarkwon()
         }
-        
+
         isEditMode = false
         isScrollListenerEnabled = true  // 确保启用滚动监听
-        
+
         // 确保工具栏始终显示且位置正确
         isToolbarVisible = true
         binding.toolbar.translationY = 0f
-        
+
         originalNote?.let { note ->
             // 显示查看模式的视图
             binding.noteTitleTextView.visibility = View.VISIBLE
             binding.noteTitleTextView.text = note.title
-            
+
             // 显示时间信息
             binding.noteTimeTextView.visibility = View.VISIBLE
             binding.noteTimeTextView.text = "创建时间: ${note.createdAt} | 修改时间: ${note.updatedAt}"
-            
+
             binding.noteContentScrollView.visibility = View.VISIBLE
             // 移除边框（查看模式下不显示边框）
             binding.noteContentScrollView.background = null
@@ -329,23 +338,23 @@ class NoteEditActivity : AppCompatActivity() {
                 Log.e("NoteEditActivity", "渲染 Markdown 失败", e)
                 binding.noteContentTextView.text = note.content
             }
-            
+
             // 隐藏编辑模式的视图
             binding.noteEditScrollView.visibility = View.GONE
             binding.noteTimeEditTextView.visibility = View.GONE
             binding.markdownButtonsContainer.visibility = View.GONE
             binding.hintTextView.visibility = View.GONE
-            
+
             // 隐藏工具栏菜单（查看模式下不显示）
             invalidateOptionsMenu()
-            
+
             // 重置滚动位置
             binding.noteContentScrollView.scrollTo(0, 0)
             lastScrollY = 0
-            
+
             // 设置滚动监听，实现工具栏的显示/隐藏
             setupScrollListener()
-            
+
             // 设置内容区域点击事件，点击后进入编辑模式
             // 使用OnTouchListener来区分点击和滑动，同时检测滚动
             binding.noteContentScrollView.setOnTouchListener { view, event ->
@@ -357,7 +366,7 @@ class NoteEditActivity : AppCompatActivity() {
                         lastScrollY = binding.noteContentScrollView.scrollY
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val deltaY = kotlin.math.abs(event.y - touchStartY)
+                        val deltaY = abs(event.y - touchStartY)
                         // 提高阈值到30像素，只有明显滑动才认为是滚动
                         if (deltaY > 30) {
                             isScrolling = true
@@ -365,9 +374,9 @@ class NoteEditActivity : AppCompatActivity() {
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         // 如果移动距离小于30像素，且滚动位置没有明显变化，认为是点击
-                        val deltaY = kotlin.math.abs(event.y - touchStartY)
-                        val scrollDelta = kotlin.math.abs(binding.noteContentScrollView.scrollY - lastScrollY)
-                        
+                        val deltaY = abs(event.y - touchStartY)
+                        val scrollDelta = abs(binding.noteContentScrollView.scrollY - lastScrollY)
+
                         if (deltaY <= 30 && scrollDelta <= 10) {
                             // 明显的点击操作，进入编辑模式
                             enterEditMode()
@@ -378,25 +387,25 @@ class NoteEditActivity : AppCompatActivity() {
                 }
                 false // 返回false，让ScrollView继续处理滑动事件
             }
-            
+
             // 标题、时间和内容都可以点击进入编辑模式
             binding.noteTitleTextView.setOnClickListener {
                 enterEditMode()
             }
-            
+
             binding.noteTimeTextView.setOnClickListener {
                 enterEditMode()
             }
-            
+
             binding.noteContentTextView.setOnClickListener {
                 enterEditMode()
             }
-            
+
         supportActionBar?.title = "查看笔记"
         binding.toolbar.title = "查看笔记"
         }
     }
-    
+
     /**
      * 设置滚动监听（现在不再需要隐藏工具栏，保留此方法以备将来使用）
      */
@@ -404,13 +413,13 @@ class NoteEditActivity : AppCompatActivity() {
         isScrollListenerEnabled = true
         // 工具栏始终显示，不需要滚动监听来控制显示/隐藏
     }
-    
+
     /**
      * 隐藏工具栏
      */
     private fun hideToolbar() {
         if (!isToolbarVisible) return
-        
+
         isToolbarVisible = false
         val toolbarHeight = if (binding.toolbar.height > 0) {
             binding.toolbar.height
@@ -418,55 +427,55 @@ class NoteEditActivity : AppCompatActivity() {
             // 如果高度还未测量，使用固定值（通常工具栏高度约为56dp）
             (56 * resources.displayMetrics.density).toInt()
         }
-        
+
         binding.toolbar.animate()
             .translationY(-toolbarHeight.toFloat())
             .setDuration(200)
             .start()
     }
-    
+
     /**
      * 显示工具栏
      */
     private fun showToolbar() {
         if (isToolbarVisible) return
-        
+
         isToolbarVisible = true
         binding.toolbar.animate()
             .translationY(0f)
             .setDuration(200)
             .start()
     }
-    
+
     /**
      * 进入编辑模式
      */
     private fun enterEditMode() {
         isEditMode = true
-        
+
         // 确保工具栏始终显示（编辑模式下工具栏应该始终显示）
         isToolbarVisible = true
         binding.toolbar.translationY = 0f
-        
+
         // 禁用滚动监听（编辑模式下不需要）
         isScrollListenerEnabled = false
-        
+
         // 隐藏查看模式的视图
         binding.noteContentScrollView.visibility = View.GONE
         binding.noteTimeTextView.visibility = View.GONE
-        
+
         // 显示编辑模式的视图
         binding.noteEditScrollView.visibility = View.VISIBLE
         binding.markdownButtonsContainer.visibility = View.VISIBLE
         binding.hintTextView.visibility = View.VISIBLE
-        
+
         // 填充数据并保存原始内容用于撤销
         originalNote?.let { note ->
             originalTitle = note.title
             originalContent = note.content
             binding.noteTitleEditText.setText(note.title)
             binding.noteContentEditText.setText(note.content)
-            
+
             // 显示时间信息
             binding.noteTimeEditTextView.visibility = View.VISIBLE
             binding.noteTimeEditTextView.text = "创建时间: ${note.createdAt} | 修改时间: ${note.updatedAt}"
@@ -474,17 +483,17 @@ class NoteEditActivity : AppCompatActivity() {
             // 新建笔记时，原始内容为空
             originalTitle = ""
             originalContent = ""
-            
+
             // 新建笔记时不显示时间
             binding.noteTimeEditTextView.visibility = View.GONE
         }
-        
+
         // 显示工具栏菜单（编辑模式下显示）
         invalidateOptionsMenu()
-        
+
         supportActionBar?.title = if (isNewNote) "新建笔记" else "编辑笔记"
         binding.toolbar.title = if (isNewNote) "新建笔记" else "编辑笔记"
-        
+
         // 移除内容区域的触摸事件（编辑模式下不需要）
         binding.noteContentScrollView.setOnTouchListener(null)
     }
@@ -495,10 +504,10 @@ class NoteEditActivity : AppCompatActivity() {
         menu.findItem(R.id.action_spacer)?.isVisible = isEditMode
         menu.findItem(R.id.action_undo)?.isVisible = isEditMode
         menu.findItem(R.id.action_save)?.isVisible = isEditMode
-        
+
         return true
     }
-    
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_undo -> {
@@ -512,7 +521,7 @@ class NoteEditActivity : AppCompatActivity() {
             else -> super.onOptionsItemSelected(item)
         }
     }
-    
+
     /**
      * 撤销修改
      */
@@ -521,7 +530,7 @@ class NoteEditActivity : AppCompatActivity() {
         binding.noteContentEditText.setText(originalContent)
         Toast.makeText(this, "已撤销修改", Toast.LENGTH_SHORT).show()
     }
-    
+
     /**
      * 设置 Markdown 快捷按钮
      */
@@ -530,71 +539,71 @@ class NoteEditActivity : AppCompatActivity() {
         binding.btnBold.setOnClickListener {
             insertMarkdownTag("**", "**")
         }
-        
+
         // 斜体
         binding.btnItalic.setOnClickListener {
             insertMarkdownTag("*", "*")
         }
-        
+
         // 代码
         binding.btnCode.setOnClickListener {
             insertMarkdownTag("`", "`")
         }
-        
+
         // 链接
         binding.btnLink.setOnClickListener {
             insertMarkdownTag("[", "]()")
         }
-        
+
         // 列表
         binding.btnList.setOnClickListener {
             insertMarkdownTag("- ", "")
         }
-        
+
         // 图片
         binding.btnImage.setOnClickListener {
             checkAndRequestPermissions()
         }
     }
-    
+
     /**
      * 检查并请求权限
      */
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf<String>()
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Android 13+ 需要 READ_MEDIA_IMAGES
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_IMAGES) 
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
                 != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+                permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
             }
         } else {
             // Android 12 及以下需要 READ_EXTERNAL_STORAGE
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) 
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
         }
-        
+
         // 相机权限
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) 
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(android.Manifest.permission.CAMERA)
+            permissions.add(Manifest.permission.CAMERA)
         }
-        
+
         if (permissions.isEmpty()) {
             showImageSourceDialog()
         } else {
             permissionLauncher.launch(permissions.toTypedArray())
         }
     }
-    
+
     /**
      * 显示图片来源选择对话框
      */
     private fun showImageSourceDialog() {
-        android.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("选择图片")
             .setItems(arrayOf("从相册选择", "拍照")) { _, which ->
                 when (which) {
@@ -604,7 +613,7 @@ class NoteEditActivity : AppCompatActivity() {
             }
             .show()
     }
-    
+
     /**
      * 拍照
      */
@@ -618,7 +627,7 @@ class NoteEditActivity : AppCompatActivity() {
         currentPhotoUri = photoUri
         cameraLauncher.launch(photoUri)
     }
-    
+
     /**
      * 处理图片URI
      */
@@ -640,7 +649,7 @@ class NoteEditActivity : AppCompatActivity() {
             Toast.makeText(this, "处理图片失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
-    
+
     /**
      * 保存图片到 Git 仓库的 images 目录
      */
@@ -649,7 +658,7 @@ class NoteEditActivity : AppCompatActivity() {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
             val bitmap = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
-            
+
             if (bitmap != null) {
                 // 压缩图片
                 val compressedBitmap = compressBitmap(bitmap)
@@ -667,28 +676,28 @@ class NoteEditActivity : AppCompatActivity() {
             null
         }
     }
-    
+
     /**
      * 压缩图片
      */
     private fun compressBitmap(bitmap: Bitmap): Bitmap {
         val maxWidth = 1920
         val maxHeight = 1920
-        
+
         val width = bitmap.width
         val height = bitmap.height
-        
+
         if (width <= maxWidth && height <= maxHeight) {
             return bitmap
         }
-        
+
         val scale = minOf(maxWidth.toFloat() / width, maxHeight.toFloat() / height)
         val newWidth = (width * scale).toInt()
         val newHeight = (height * scale).toInt()
-        
+
         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
-    
+
     /**
      * 插入图片Markdown语法
      */
@@ -702,7 +711,7 @@ class NoteEditActivity : AppCompatActivity() {
         editText.setText(newText)
         editText.setSelection(start + imageMarkdown.length)
     }
-    
+
     /**
      * 在光标位置插入 Markdown 标签
      */
@@ -711,7 +720,7 @@ class NoteEditActivity : AppCompatActivity() {
         val start = editText.selectionStart
         val end = editText.selectionEnd
         val text = editText.text.toString()
-        
+
         if (start == end) {
             // 没有选中文本，在光标位置插入标签
             val newText = text.substring(0, start) + before + after + text.substring(start)
@@ -781,7 +790,7 @@ class NoteEditActivity : AppCompatActivity() {
             super.onBackPressed()
             return
         }
-        
+
         // 在编辑模式下，检查是否有未保存的更改
         val title = binding.noteTitleEditText.text.toString().trim()
         val content = binding.noteContentEditText.text.toString().trim()
@@ -795,7 +804,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
 
         if (hasChanges) {
-            android.app.AlertDialog.Builder(this)
+            AlertDialog.Builder(this)
                 .setTitle("放弃更改？")
                 .setMessage("您有未保存的更改，确定要放弃吗？")
                 .setPositiveButton("放弃") { _, _ ->
@@ -817,7 +826,7 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         // 禁用滚动监听

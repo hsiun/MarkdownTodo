@@ -1,10 +1,13 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.dialog
 
 import android.app.AlertDialog
 import android.content.Context
 import android.view.LayoutInflater
-import android.widget.*
-
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.Toast
+import com.hsiun.markdowntodo.R
+import com.hsiun.markdowntodo.data.manager.SettingsManager
 
 class SettingsDialogManager(private val context: Context) {
 

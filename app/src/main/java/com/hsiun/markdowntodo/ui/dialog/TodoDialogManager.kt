@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.dialog
 
 import android.app.AlertDialog
 import android.content.Context
@@ -18,6 +18,9 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.FragmentManager
+import com.hsiun.markdowntodo.R
+import com.hsiun.markdowntodo.data.model.RepeatType
+import com.hsiun.markdowntodo.data.model.TodoItem
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -353,7 +356,7 @@ class TodoDialogManager(private val context: Context) {
             }.timeInMillis
         }
 
-        val timePickerDialog = OneRowTimePickerDialog.newInstance(
+        val timePickerDialog = OneRowTimePickerDialog.Companion.newInstance(
             initialTime = initialTime,
             minTime = System.currentTimeMillis()
         )

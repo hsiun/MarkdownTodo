@@ -1,20 +1,33 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.manager
 
 import android.content.Context
 import android.util.Log
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.data.model.TodoItem
+import com.hsiun.markdowntodo.data.model.TodoList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeResult
+import org.eclipse.jgit.api.PullResult
+import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.Ref
+import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder
+import org.eclipse.jgit.treewalk.TreeWalk
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-import org.eclipse.jgit.api.PullResult as JPullResult
 
 class SyncManager(
     private val context: Context,
@@ -125,19 +138,19 @@ class SyncManager(
                 Log.w(TAG, "Git目录不存在，无法列出远程文件")
                 return emptyList()
             }
-            
-            val repository = org.eclipse.jgit.storage.file.FileRepositoryBuilder()
+
+            val repository = FileRepositoryBuilder()
                 .setGitDir(gitDir)
                 .build()
-            
+
             repository.use { repo ->
                 // 尝试多个可能的分支名称
                 val possibleBranches = listOf("main", "master", "origin/main", "origin/master")
-                var ref: org.eclipse.jgit.lib.Ref? = null
+                var ref: Ref? = null
                 var branchName = ""
-                
+
                 for (branch in possibleBranches) {
-                    ref = repo.findRef("refs/remotes/origin/$branch") 
+                    ref = repo.findRef("refs/remotes/origin/$branch")
                         ?: repo.findRef("refs/heads/$branch")
                         ?: repo.findRef("refs/remotes/$branch")
                     if (ref != null) {
@@ -146,7 +159,7 @@ class SyncManager(
                         break
                     }
                 }
-                
+
                 // 如果还是找不到，尝试使用HEAD
                 if (ref == null) {
                     ref = repo.findRef("HEAD")
@@ -154,40 +167,40 @@ class SyncManager(
                         Log.d(TAG, "使用HEAD引用")
                     }
                 }
-                
+
                 if (ref == null) {
                     Log.w(TAG, "无法找到任何分支引用")
                     return emptyList()
                 }
-                
+
                 // 获取ref指向的对象
                 val objectId = ref.objectId
                 if (objectId == null) {
                     Log.w(TAG, "引用没有对象ID")
                     return emptyList()
                 }
-                
+
                 // 解析对象，如果是commit，需要获取其tree
                 val objectReader = repo.newObjectReader()
                 val objectLoader = objectReader.open(objectId)
-                val treeId = if (objectLoader.type == org.eclipse.jgit.lib.Constants.OBJ_COMMIT) {
+                val treeId = if (objectLoader.type == Constants.OBJ_COMMIT) {
                     // 如果是commit对象，需要解析出tree对象
-                    val commit = org.eclipse.jgit.revwalk.RevWalk(repo).parseCommit(objectId)
+                    val commit = RevWalk(repo).parseCommit(objectId)
                     commit.tree.id
-                } else if (objectLoader.type == org.eclipse.jgit.lib.Constants.OBJ_TREE) {
+                } else if (objectLoader.type == Constants.OBJ_TREE) {
                     // 如果已经是tree对象，直接使用
                     objectId
                 } else {
                     Log.w(TAG, "引用指向的对象类型不支持: ${objectLoader.type}")
                     return emptyList()
                 }
-                
+
                 // 使用ls-tree列出远程分支的文件
                 val remoteFiles = mutableListOf<String>()
-                org.eclipse.jgit.treewalk.TreeWalk(repo).use { treeWalk ->
+                TreeWalk(repo).use { treeWalk ->
                     treeWalk.reset(treeId)
                     treeWalk.isRecursive = true
-                    
+
                     while (treeWalk.next()) {
                         val path = treeWalk.pathString
                         if (path.startsWith("$DIR_NOTES/") && path.endsWith(".md")) {
@@ -198,7 +211,7 @@ class SyncManager(
                     }
                 }
 
-                
+
                 Log.d(TAG, "远程仓库中的笔记文件数量: ${remoteFiles.size}")
                 remoteFiles
             }
@@ -207,7 +220,7 @@ class SyncManager(
             emptyList()
         }
     }
-    
+
     /**
      * 强制checkout所有文件到工作目录
      */
@@ -217,18 +230,18 @@ class SyncManager(
                 Log.w(TAG, "GitManager未初始化，无法执行checkout")
                 return
             }
-            
+
             val repoDir = File(context.filesDir, GIT_REPO_DIR)
-            val repository = org.eclipse.jgit.storage.file.FileRepositoryBuilder()
+            val repository = FileRepositoryBuilder()
                 .setGitDir(File(repoDir, ".git"))
                 .build()
-            
+
             repository.use { repo ->
-                org.eclipse.jgit.api.Git(repo).use { git ->
+                Git(repo).use { git ->
                     Log.d(TAG, "执行强制checkout...")
                     // 使用reset --hard来确保工作目录与HEAD一致
                     git.reset()
-                        .setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD)
+                        .setMode(ResetCommand.ResetType.HARD)
                         .setRef("HEAD")
                         .call()
                     Log.d(TAG, "强制checkout完成")
@@ -239,7 +252,7 @@ class SyncManager(
             throw e
         }
     }
-    
+
     /**
      * 列出本地目录中的所有文件
      */
@@ -249,12 +262,12 @@ class SyncManager(
                 Log.w(TAG, "$description: 目录不存在或不是目录: ${directory.absolutePath}")
                 return emptyList()
             }
-            
+
             val allFiles = directory.listFiles() ?: emptyArray()
             val mdFiles = allFiles.filter { file ->
                 file.isFile && file.name.endsWith(".md", ignoreCase = true)
             }.map { it.name }
-            
+
             Log.d(TAG, "$description: 本地文件总数=${allFiles.size}, .md文件数=${mdFiles.size}")
             mdFiles.forEach { fileName ->
                 Log.d(TAG, "$description: 本地文件: $fileName")
@@ -277,7 +290,7 @@ class SyncManager(
         // 0. 拉取前，列出本地文件
         Log.d(TAG, "========== 同步开始：文件对比分析 ==========")
         val localFilesBeforePull = listLocalFiles(notesDir, "拉取前本地")
-        
+
         // 1. 检查Git仓库是否存在，不存在则初始化并拉取
         if (!gitConfig.exists()) {
             Log.d(TAG, "Git仓库不存在，初始化仓库")
@@ -289,7 +302,7 @@ class SyncManager(
         Log.d(TAG, "先保存当前数据到Git目录（包括删除操作）...")
         syncListener?.onSyncProgress("正在保存本地更改...")
         saveCurrentDataToGit()
-        
+
         // 1.6. 推送本地更改（包括删除操作）到远程，确保删除操作先完成
         Log.d(TAG, "推送本地更改（包括删除操作）到远程...")
         syncListener?.onSyncProgress("正在推送本地更改...")
@@ -308,13 +321,13 @@ class SyncManager(
 
         // 2.5. 拉取后立即检查Git目录中的文件
         var localFilesAfterPull = listLocalFiles(notesDir, "拉取后本地")
-        
+
         // 对比分析
         Log.d(TAG, "========== 文件对比分析 ==========")
         Log.d(TAG, "远程文件数量: ${remoteFiles.size}")
         Log.d(TAG, "拉取前本地文件数量: ${localFilesBeforePull.size}")
         Log.d(TAG, "拉取后本地文件数量: ${localFilesAfterPull.size}")
-        
+
         // 找出差异（remoteFiles现在只包含文件名，不包含路径）
         val missingInLocal = remoteFiles.filter { fileName ->
             !localFilesAfterPull.contains(fileName)
@@ -322,10 +335,10 @@ class SyncManager(
         val extraInLocal = localFilesAfterPull.filter { fileName ->
             !remoteFiles.contains(fileName)
         }
-        
+
         if (missingInLocal.isNotEmpty()) {
             Log.w(TAG, "本地缺失的文件 (${missingInLocal.size} 个): ${missingInLocal.joinToString(", ")}")
-            
+
             // 如果拉取后文件数量不对，尝试强制checkout
             if (pullResult is SyncPullResult.Success && missingInLocal.isNotEmpty()) {
                 Log.w(TAG, "检测到文件缺失，尝试强制checkout...")
@@ -334,7 +347,7 @@ class SyncManager(
                     // 重新检查文件
                     localFilesAfterPull = listLocalFiles(notesDir, "强制checkout后本地")
                     Log.d(TAG, "强制checkout后本地文件数量: ${localFilesAfterPull.size}")
-                    
+
                     // 再次检查缺失的文件
                     val stillMissing = remoteFiles.filter { fileName ->
                         !localFilesAfterPull.contains(fileName)
@@ -430,12 +443,19 @@ class SyncManager(
                                         conflictFiles.addAll(mergeResult.conflicts.keys)
                                     }
 
-                                    continuation.resume(SyncPullResult.Conflict(conflictFiles, mergeResult))
+                                    continuation.resume(
+                                        SyncPullResult.Conflict(
+                                            conflictFiles,
+                                            mergeResult
+                                        )
+                                    )
                                 }
+
                                 MergeResult.MergeStatus.FAILED -> {
                                     syncListener?.onSyncProgress("合并失败")
                                     continuation.resume(SyncPullResult.Error("合并失败"))
                                 }
+
                                 else -> {
                                     syncListener?.onSyncProgress("拉取成功")
                                     continuation.resume(SyncPullResult.Success(pullResult))
@@ -659,7 +679,7 @@ class SyncManager(
             if (lines.size > 2) {
                 lines.drop(2)
                     .filter { it.isNotBlank() }
-                    .mapNotNull { TodoItem.fromMarkdownLine(it) }
+                    .mapNotNull { TodoItem.Companion.fromMarkdownLine(it) }
                     .toList()
             } else {
                 emptyList()
@@ -791,7 +811,10 @@ class SyncManager(
                 saveCurrentDataToGit()
 
                 // 推送
-                val commitMessage = "$operation 列表 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
+                val commitMessage = "$operation 列表 - ${
+                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
+                        Date()
+                    )}"
 
                 gitManager.commitAndPush(
                     commitMessage = commitMessage,
@@ -813,11 +836,11 @@ class SyncManager(
      */
     private fun mergeMetadataJson(ourJson: String, theirJson: String): String {
         return try {
-            val ourArray = org.json.JSONArray(ourJson)
-            val theirArray = org.json.JSONArray(theirJson)
+            val ourArray = JSONArray(ourJson)
+            val theirArray = JSONArray(theirJson)
 
             // 使用ID作为唯一标识，合并两个数组
-            val mergedMap = mutableMapOf<String, org.json.JSONObject>()
+            val mergedMap = mutableMapOf<String, JSONObject>()
 
             // 添加他们的所有项目
             for (i in 0 until theirArray.length()) {
@@ -834,7 +857,7 @@ class SyncManager(
             }
 
             // 创建合并后的JSON数组
-            val mergedArray = org.json.JSONArray()
+            val mergedArray = JSONArray()
             mergedMap.values.forEach { mergedArray.put(it) }
 
             mergedArray.toString()
@@ -889,7 +912,10 @@ class SyncManager(
                 val updatedTodos = todos.map { todo ->
                     // 如果updatedAt是空的，设置为当前时间
                     if (todo.updatedAt.isEmpty() || todo.updatedAt == todo.createdAt) {
-                        val currentTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                        val currentTime = SimpleDateFormat(
+                            "yyyy-MM-dd HH:mm:ss",
+                            Locale.getDefault()
+                        ).format(Date())
                         todo.copy(updatedAt = currentTime)
                     } else {
                         todo
@@ -905,13 +931,13 @@ class SyncManager(
             if (notesDir.exists()) {
                 // 在调用 readNotesFromDirectory 之前，先检查目录中的所有文件
                 val localFilesBeforeRead = listLocalFiles(notesDir, "读取笔记前本地")
-                
+
                 val notes = readNotesFromDirectory(notesDir)
                 Log.d(TAG, "loadDataFromGitToMemory: 从Git目录读取到 ${notes.size} 条笔记")
                 notes.forEachIndexed { index, note ->
                     Log.d(TAG, "loadDataFromGitToMemory: 读取到的笔记 $index: UUID=${note.uuid}, 标题=${note.title}")
                 }
-                
+
                 // 对比分析：本地文件数量 vs 读取到的笔记数量
                 Log.d(TAG, "========== 读取笔记对比分析 ==========")
                 Log.d(TAG, "本地.md文件数量: ${localFilesBeforeRead.size}")
@@ -932,7 +958,7 @@ class SyncManager(
                     Log.d(TAG, "✓ 文件数量与笔记数量一致")
                 }
                 Log.d(TAG, "=====================================")
-                
+
                 noteManager.replaceAllNotes(notes)
             } else {
                 Log.w(TAG, "loadDataFromGitToMemory: 笔记目录不存在: ${notesDir.absolutePath}")
@@ -978,7 +1004,7 @@ class SyncManager(
     /**
      * 重试推送（先拉取再推送）
      */
-    private suspend fun retryPushWithPull(continuation: kotlin.coroutines.Continuation<Unit>) {
+    private suspend fun retryPushWithPull(continuation: Continuation<Unit>) {
         syncListener?.onSyncProgress("推送失败，正在重试...")
 
         // 先拉取
@@ -995,7 +1021,10 @@ class SyncManager(
 
                 syncListener?.onSyncProgress("重新推送...")
                 gitManager.commitAndPush(
-                    commitMessage = "同步更新（重试） - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}",
+                    commitMessage = "同步更新（重试） - ${
+                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
+                            Date()
+                        )}",
                     filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/", "$DIR_IMAGES/"),
                     onSuccess = {
                         syncScope.launch {
@@ -1036,7 +1065,10 @@ class SyncManager(
                 saveCurrentDataToGit()
 
                 // 推送
-                val commitMessage = "$operation 待办 - ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}"
+                val commitMessage = "$operation 待办 - ${
+                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
+                        Date()
+                    )}"
 
                 gitManager.commitAndPush(
                     commitMessage = commitMessage,
@@ -1158,7 +1190,7 @@ class SyncManager(
                     }
                     counter++
                 }
-                
+
                 usedFileNames.add(fileName)
                 val noteFile = File(notesDir, fileName)
                 noteFile.writeText(note.toMarkdown())
@@ -1170,7 +1202,7 @@ class SyncManager(
                 imagesDir.mkdirs()
                 Log.d(TAG, "创建 images 目录: ${imagesDir.absolutePath}")
             }
-            
+
             // 列出 images 目录中的文件，用于调试
             val imageFiles = imagesDir.listFiles()
             if (imageFiles != null && imageFiles.isNotEmpty()) {
@@ -1202,7 +1234,7 @@ class SyncManager(
             syncScope.launch {
                 try {
                     Log.d(TAG, "开始删除Git中的笔记: UUID=${note.uuid}, Title=${note.title}")
-                    
+
                     // 先获取所有可能的文件名
                     val noteDir = File(context.filesDir, "$GIT_REPO_DIR/$DIR_NOTES")
                     if (!noteDir.exists()) {
@@ -1210,18 +1242,18 @@ class SyncManager(
                         continuation.resume(false)
                         return@launch
                     }
-                    
+
                     val noteFiles = noteDir.listFiles { file ->
                         file.isFile && file.name.endsWith(".md", ignoreCase = true)
                     } ?: emptyArray()
 
                     Log.d(TAG, "扫描到 ${noteFiles.size} 个笔记文件，查找UUID=${note.uuid}")
-                    
+
                     var fileNameToDelete = ""
                     for (file in noteFiles) {
                         try {
                             val content = file.readText()
-                            val fileNote = NoteItem.fromMarkdown(content)
+                            val fileNote = NoteItem.Companion.fromMarkdown(content)
                             if (fileNote?.uuid == note.uuid) {
                                 fileNameToDelete = file.name
                                 Log.d(TAG, "找到要删除的文件: $fileNameToDelete")
@@ -1238,7 +1270,7 @@ class SyncManager(
                         for (file in noteFiles) {
                             try {
                                 val content = file.readText()
-                                val fileNote = NoteItem.fromMarkdown(content)
+                                val fileNote = NoteItem.Companion.fromMarkdown(content)
                                 if (fileNote?.uuid == note.uuid) {
                                     fileNameToDelete = file.name
                                     Log.d(TAG, "通过UUID找到文件: $fileNameToDelete")
@@ -1252,14 +1284,14 @@ class SyncManager(
 
                     if (fileNameToDelete.isNotEmpty()) {
                         Log.d(TAG, "调用GitManager删除文件: $DIR_NOTES/$fileNameToDelete")
-                        
+
                         // 先确保本地文件已删除（如果还存在）
                         val localFile = File(noteDir, fileNameToDelete)
                         if (localFile.exists()) {
                             val localDeleted = localFile.delete()
                             Log.d(TAG, "删除本地文件: $fileNameToDelete, 结果: $localDeleted")
                         }
-                        
+
                         gitManager.removeFile(
                             filePattern = "$DIR_NOTES/$fileNameToDelete",
                             commitMessage = "删除笔记: ${note.title}",
@@ -1287,7 +1319,7 @@ class SyncManager(
             }
         }
     }
-    
+
     /**
      * 删除笔记（从Git目录）- 异步版本（保持向后兼容）
      */
@@ -1326,7 +1358,7 @@ class SyncManager(
 
         // 1) 已经是合法 JSON array，直接返回
         try {
-            org.json.JSONArray(trimmed)
+            JSONArray(trimmed)
             return trimmed
         } catch (_: Exception) {
             // ignore
@@ -1339,7 +1371,7 @@ class SyncManager(
                 .mapNotNull { match ->
                     val candidate = match.value.trim()
                     try {
-                        org.json.JSONArray(candidate)
+                        JSONArray(candidate)
                         candidate
                     } catch (_: Exception) {
                         null
@@ -1375,7 +1407,7 @@ class SyncManager(
             }
 
             val json = normalizeMetadataJson(file.readText())
-            val jsonArray = org.json.JSONArray(json)
+            val jsonArray = JSONArray(json)
             val result = mutableListOf<TodoList>()
 
             for (i in 0 until jsonArray.length()) {
@@ -1405,10 +1437,10 @@ class SyncManager(
      */
     private fun saveTodoListsMetadata(todoLists: List<TodoList>, file: File) {
         try {
-            val jsonArray = org.json.JSONArray()
+            val jsonArray = JSONArray()
 
             todoLists.forEach { list ->
-                val jsonObject = org.json.JSONObject().apply {
+                val jsonObject = JSONObject().apply {
                     put("id", list.id)
                     put("name", list.name)
                     put("fileName", list.fileName)
@@ -1438,7 +1470,7 @@ class SyncManager(
                 if (lines.size > 2) {
                     lines.drop(2)
                         .filter { it.isNotBlank() }
-                        .mapNotNull { TodoItem.fromMarkdownLine(it) }
+                        .mapNotNull { TodoItem.Companion.fromMarkdownLine(it) }
                         .toList()
                 } else {
                     emptyList()
@@ -1458,19 +1490,19 @@ class SyncManager(
     private fun readNotesFromDirectory(directory: File): List<NoteItem> {
         return try {
             Log.d(TAG, "readNotesFromDirectory: 读取目录: ${directory.absolutePath}")
-            
+
             if (!directory.exists() || !directory.isDirectory) {
                 Log.w(TAG, "readNotesFromDirectory: 目录不存在或不是目录: ${directory.absolutePath}")
                 return emptyList()
             }
-            
+
             // 列出目录中的所有文件（用于调试）
             val allFiles = directory.listFiles() ?: emptyArray()
             Log.d(TAG, "readNotesFromDirectory: 目录中的所有文件数量: ${allFiles.size}")
             allFiles.forEach { file ->
                 Log.d(TAG, "readNotesFromDirectory: 目录中的文件: ${file.name}, 是文件: ${file.isFile}, 是目录: ${file.isDirectory}")
             }
-            
+
             // 手动过滤.md文件，确保读取所有文件
             val noteFiles = allFiles.filter { file ->
                 file.isFile && file.name.endsWith(".md", ignoreCase = true)
@@ -1485,11 +1517,11 @@ class SyncManager(
             val uuidSet = mutableSetOf<String>()
             var successCount = 0
             var failCount = 0
-            
+
             noteFiles.forEach { file ->
                 try {
                     val content = file.readText()
-                    val note = NoteItem.fromMarkdown(content)
+                    val note = NoteItem.Companion.fromMarkdown(content)
                     if (note != null) {
                         // 检查重复UUID
                         if (uuidSet.contains(note.uuid)) {
@@ -1586,9 +1618,9 @@ class SyncManager(
     private fun mergeNotesByUuidAndTime(ourContent: String, theirContent: String): String {
         try {
             // 解析我们的笔记
-            val ourNote = NoteItem.fromMarkdown(ourContent)
+            val ourNote = NoteItem.Companion.fromMarkdown(ourContent)
             // 解析他们的笔记
-            val theirNote = NoteItem.fromMarkdown(theirContent)
+            val theirNote = NoteItem.Companion.fromMarkdown(theirContent)
 
             if (ourNote == null && theirNote == null) {
                 return ourContent
@@ -1621,9 +1653,9 @@ class SyncManager(
     private fun mergeNotesByUpdateTime(ourContent: String, theirContent: String): String {
         try {
             // 解析我们的笔记
-            val ourNote = NoteItem.fromMarkdown(ourContent)
+            val ourNote = NoteItem.Companion.fromMarkdown(ourContent)
             // 解析他们的笔记
-            val theirNote = NoteItem.fromMarkdown(theirContent)
+            val theirNote = NoteItem.Companion.fromMarkdown(theirContent)
 
             if (ourNote == null && theirNote == null) {
                 return ourContent
@@ -1657,7 +1689,7 @@ class SyncManager(
      * 拉取结果封装
      */
     private sealed class SyncPullResult {
-        data class Success(val result: JPullResult) : SyncPullResult()
+        data class Success(val result: PullResult) : SyncPullResult()
         data class Conflict(val conflictFiles: List<String>, val mergeResult: MergeResult?) : SyncPullResult()
         data class Error(val errorMessage: String) : SyncPullResult()
     }

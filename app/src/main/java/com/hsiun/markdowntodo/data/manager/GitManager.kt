@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.manager
 
 import android.content.Context
 import android.util.Log
@@ -11,6 +11,8 @@ import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.PullResult
+import org.eclipse.jgit.api.errors.CheckoutConflictException
+import org.eclipse.jgit.api.errors.NoFilepatternException
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.transport.CredentialsProvider
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
@@ -95,7 +97,7 @@ class GitManager(
                             .setGitDir(File(repoDir, ".git"))
                             .build()
 
-                        var pullResult: org.eclipse.jgit.api.PullResult? = null
+                        var pullResult: PullResult? = null
 
                         repository.use { repo ->
                             Git(repo).use { git ->
@@ -129,7 +131,7 @@ class GitManager(
                         Log.e(TAG, "拉取失败", e)
 
                         // 特别处理 CheckoutConflictException
-                        if (e is org.eclipse.jgit.api.errors.CheckoutConflictException) {
+                        if (e is CheckoutConflictException) {
                             Log.d(TAG, "检出冲突异常")
                             // 获取冲突文件列表
                             val conflictFiles = mutableListOf<String>()
@@ -234,7 +236,7 @@ class GitManager(
                                                 Log.w(TAG, "目录 $dirPath 不存在")
                                             }
                                         }
-                                        
+
                                         // 仍然使用模式添加，以确保所有文件都被包含
                                         git.add()
                                             .addFilepattern(pattern)
@@ -244,7 +246,7 @@ class GitManager(
                                         Log.w(TAG, "添加文件模式 $pattern 失败: ${e.message}", e)
                                     }
                                 }
-                                
+
                                 // 对于目录模式，需要显式添加所有更改（包括删除）
                                 // Git的add()对于目录会自动检测删除，但为了确保，我们使用setUpdate(true)
                                 filePatterns.forEach { pattern ->
@@ -268,7 +270,7 @@ class GitManager(
                                     Log.d(TAG, "没有需要提交的更改")
                                     return@synchronized Pair(true, "没有需要提交的更改")
                                 }
-                                
+
                                 // 记录所有更改（包括删除）
                                 val removedFiles = status.removed
                                 if (removedFiles.isNotEmpty()) {
@@ -282,7 +284,7 @@ class GitManager(
                                 if (modifiedFiles.isNotEmpty()) {
                                     Log.d(TAG, "检测到修改的文件: ${modifiedFiles.joinToString(", ")}")
                                 }
-                                
+
                                 // 特别检查 images 目录的文件
                                 val imagesDir = File(repoDir, "images")
                                 if (imagesDir.exists() && imagesDir.isDirectory) {
@@ -399,7 +401,7 @@ class GitManager(
                                         .addFilepattern(filePattern)
                                         .call()
                                     Log.d(TAG, "已标记删除文件: $filePattern")
-                                } catch (e: org.eclipse.jgit.api.errors.NoFilepatternException) {
+                                } catch (e: NoFilepatternException) {
                                     // 如果文件模式无效，尝试使用相对路径
                                     val relativePath = filePattern.replace("\\", "/")
                                     git.rm()

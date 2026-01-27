@@ -1,5 +1,7 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.util
 
+import android.Manifest
+import android.R
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,10 +10,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import android.util.Log
+import com.hsiun.markdowntodo.data.model.RepeatType
+import com.hsiun.markdowntodo.data.model.TodoItem
+import com.hsiun.markdowntodo.receiver.TodoReminderReceiver
+import com.hsiun.markdowntodo.ui.activity.MainActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -47,7 +53,7 @@ class ReminderScheduler {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 ActivityCompat.checkSelfPermission(
                     context,
-                    android.Manifest.permission.POST_NOTIFICATIONS
+                    Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED
             } else {
                 // Android 13 以下版本不需要运行时权限
@@ -109,9 +115,10 @@ class ReminderScheduler {
                     )
                 }
 
-                Log.d(TAG, "已调度提醒: ${todo.title} at ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
-                    Date(timeToSchedule)
-                )}, 重复类型=${RepeatType.fromValue(todo.repeatType).displayName}")
+                Log.d(TAG, "已调度提醒: ${todo.title} at ${
+                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
+                        Date(timeToSchedule)
+                )}, 重复类型=${RepeatType.Companion.fromValue(todo.repeatType).displayName}")
             } catch (e: Exception) {
                 Log.e(TAG, "调度提醒失败", e)
             }
@@ -164,7 +171,7 @@ class ReminderScheduler {
 
                 // 构建通知
                 val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setSmallIcon(R.drawable.ic_dialog_info)
                     .setContentTitle("待办提醒")
                     .setContentText("${todo.title}")
                     .setPriority(NotificationCompat.PRIORITY_HIGH)

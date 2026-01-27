@@ -1,4 +1,4 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.manager
 
 import android.content.Context
 import android.content.SharedPreferences

@@ -1,6 +1,5 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.ui.adapter
 
-import com.hsiun.markdowntodo.NoteItem
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +7,8 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -102,7 +103,7 @@ class NoteAdapter(
             null
         }
     }
-    
+
     fun getNoteAtPosition(position: Int): NoteItem? {
         return getItemAtPosition(position)
     }
@@ -111,7 +112,10 @@ class NoteAdapter(
         notes.clear()
         notes.addAll(newNotes.sortedByDescending {
             try {
-                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(it.updatedAt) ?: Date()
+                SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss",
+                    Locale.getDefault()
+                ).parse(it.updatedAt) ?: Date()
             } catch (e: Exception) {
                 Date()
             }

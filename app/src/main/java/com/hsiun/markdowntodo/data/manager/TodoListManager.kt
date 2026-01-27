@@ -1,7 +1,8 @@
-package com.hsiun.markdowntodo
+package com.hsiun.markdowntodo.data.manager
 
 import android.content.Context
 import android.util.Log
+import com.hsiun.markdowntodo.data.model.TodoList
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -46,7 +47,7 @@ class TodoListManager(private val context: Context) {
             val file = File(context.filesDir, TODO_LISTS_FILE)
             if (file.exists()) {
                 val json = file.readText()
-                val jsonArray = org.json.JSONArray(json)
+                val jsonArray = JSONArray(json)
 
                 todoLists.clear()
                 for (i in 0 until jsonArray.length()) {
@@ -86,9 +87,9 @@ class TodoListManager(private val context: Context) {
 
     private fun saveTodoLists() {
         try {
-            val jsonArray = org.json.JSONArray()
+            val jsonArray = JSONArray()
             todoLists.forEach { list ->
-                val jsonObject = org.json.JSONObject().apply {
+                val jsonObject = JSONObject().apply {
                     put("id", list.id)
                     put("name", list.name)
                     put("fileName", list.fileName)
