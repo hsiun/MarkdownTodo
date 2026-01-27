@@ -1,7 +1,6 @@
 package com.hsiun.markdowntodo
 
 import com.hsiun.markdowntodo.NoteItem
-import android.R
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
@@ -235,8 +234,8 @@ class MainActivity : AppCompatActivity(),
                 setTextColor(
                     ColorStateList(
                         arrayOf(
-                            intArrayOf(R.attr.state_selected),
-                            intArrayOf(-R.attr.state_selected)
+                            intArrayOf(android.R.attr.state_selected),
+                            intArrayOf(-android.R.attr.state_selected)
                         ),
                         intArrayOf(
                             Color.parseColor("#FF9800"), // 选中时的颜色
@@ -330,7 +329,8 @@ class MainActivity : AppCompatActivity(),
     private fun setupListeners() {
         // 设置按钮点击
         binding.settingsButton.setOnClickListener {
-            settingsDialogManager.showSimpleSettingsDialog(settingsManager)
+            val intent = android.content.Intent(this, SettingsActivity::class.java)
+            startActivity(intent)
         }
     }
 
@@ -478,6 +478,7 @@ class MainActivity : AppCompatActivity(),
         runOnUiThread {
             binding.swipeRefreshLayout.isRefreshing = true
             updateSyncIndicator("正在同步...", Color.parseColor("#FF9800"))
+            startSyncAnimation()
         }
     }
 
@@ -490,20 +491,24 @@ class MainActivity : AppCompatActivity(),
     override fun onSyncStatusChanged(status: String) {
         runOnUiThread {
             Log.d("MainActivity-Sync", "状态变化: $status")
-            binding.syncStatusText.text = when {
-                status.contains("正在同步") -> "🔄"
-                status.contains("成功") -> "✅"
-                status.contains("失败") -> "❌"
-                status.contains("未连接") -> "⚪"
-                else -> "⚪"
-            }
+            if (status.contains("正在同步")) {
+                binding.syncStatusIcon.setImageResource(R.drawable.ic_sync)
+                startSyncAnimation()
+            } else {
+                stopSyncAnimation()
+                binding.syncStatusIcon.setImageResource(when {
+                    status.contains("成功") -> R.drawable.ic_check_circle
+                    status.contains("失败") -> R.drawable.ic_error_circle
+                    status.contains("未连接") -> R.drawable.ic_circle_outline
+                    else -> R.drawable.ic_circle_outline
+                })
 
-            // 自动清除状态
-            if (status.isNotEmpty() && !status.contains("正在同步")) {
-                Handler(Looper.getMainLooper()).postDelayed({
-                    binding.syncStatusText.text = "⚪"
-                    binding.syncStatusText.setTextColor(Color.parseColor("#666666"))
-                }, 3000)
+                // 自动清除状态
+                if (status.isNotEmpty()) {
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        binding.syncStatusIcon.setImageResource(R.drawable.ic_circle_outline)
+                    }, 3000)
+                }
             }
         }
     }
@@ -605,6 +610,7 @@ class MainActivity : AppCompatActivity(),
         runOnUiThread {
             binding.swipeRefreshLayout.isRefreshing = false
             isSyncing = false
+            stopSyncAnimation()
             updateSyncIndicator("同步成功", Color.parseColor("#4CAF50"))
             Log.d("MainActivity", message)
 
@@ -622,6 +628,7 @@ class MainActivity : AppCompatActivity(),
         runOnUiThread {
             binding.swipeRefreshLayout.isRefreshing = false
             isSyncing = false
+            stopSyncAnimation()
 
             if (error.contains("冲突") || error.contains("Checkout conflict")) {
                 // 冲突相关的错误，提示用户
@@ -642,18 +649,42 @@ class MainActivity : AppCompatActivity(),
 
     private fun updateSyncIndicator(status: String = "", color: Int? = null) {
         if (status.isNotEmpty()) {
-            binding.syncStatusText.text = when {
-                status.contains("正在同步") -> "🔄"
-                status.contains("成功") -> "✅"
-                status.contains("失败") -> "❌"
-                status.contains("未连接") -> "⚪"
-                else -> "⚪"
+            if (status.contains("正在同步")) {
+                binding.syncStatusIcon.setImageResource(R.drawable.ic_sync)
+                startSyncAnimation()
+            } else {
+                stopSyncAnimation()
+                binding.syncStatusIcon.setImageResource(when {
+                    status.contains("成功") -> R.drawable.ic_check_circle
+                    status.contains("失败") -> R.drawable.ic_error_circle
+                    status.contains("未连接") -> R.drawable.ic_circle_outline
+                    else -> R.drawable.ic_circle_outline
+                })
             }
         }
-
-        if (color != null) {
-            binding.syncStatusText.setTextColor(color)
+    }
+    
+    /**
+     * 启动同步图标旋转动画
+     */
+    private fun startSyncAnimation() {
+        val rotation = android.view.animation.RotateAnimation(
+            0f, 360f,
+            android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f,
+            android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f
+        ).apply {
+            duration = 1000
+            repeatCount = android.view.animation.Animation.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
         }
+        binding.syncStatusIcon.startAnimation(rotation)
+    }
+    
+    /**
+     * 停止同步图标旋转动画
+     */
+    private fun stopSyncAnimation() {
+        binding.syncStatusIcon.clearAnimation()
     }
 
     // 待办确认删除对话框

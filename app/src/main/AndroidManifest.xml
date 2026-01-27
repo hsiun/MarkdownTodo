@@ -38,6 +38,11 @@
             android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
+            android:exported="false" />
             
         <provider
             android:name="androidx.core.content.FileProvider"

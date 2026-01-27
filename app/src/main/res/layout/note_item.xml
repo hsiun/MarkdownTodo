@@ -1,20 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/noteItemContainer"
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="?android:attr/selectableItemBackground"
-    android:layout_margin="8dp"
-    android:backgroundTint="#FFFFFF"
-    android:elevation="2dp">
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginVertical="4dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="1dp"
+    app:cardUseCompatPadding="true">
 
     <LinearLayout
+        android:id="@+id/noteItemContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
 
         <TextView
             android:id="@+id/noteTitleText"
@@ -27,17 +30,17 @@
             android:maxLines="1"
             android:ellipsize="end" />
 
+        <TextView
+            android:id="@+id/noteDateAndPreviewText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="2023-01-01 | 笔记内容预览..."
+            android:textSize="12sp"
+            android:textColor="#999999"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/noteDateAndPreviewText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="2023-01-01 | 笔记内容预览..."
-        android:textSize="12sp"
-        android:textColor="#999999"
-        android:maxLines="1"
-        android:ellipsize="end" />
-
-</LinearLayout>
+</androidx.cardview.widget.CardView>
