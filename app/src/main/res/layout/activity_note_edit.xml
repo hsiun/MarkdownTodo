@@ -9,10 +9,12 @@
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
         android:background="#FFFFFF"
-        android:elevation="0dp"
+        android:elevation="4dp"
         android:paddingTop="0dp"
+        android:paddingBottom="8dp"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="#000000"
         app:title="编辑笔记"
@@ -23,7 +25,11 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp"
+        android:paddingTop="0dp"
+        android:layout_marginTop="8dp">
 
         <!-- 查看模式的内容显示（可滚动，点击进入编辑，包含标题和内容） -->
         <androidx.core.widget.NestedScrollView
