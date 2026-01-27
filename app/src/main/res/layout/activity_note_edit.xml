@@ -12,6 +12,7 @@
         android:layout_height="?attr/actionBarSize"
         android:background="#FFFFFF"
         android:elevation="0dp"
+        android:paddingTop="0dp"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="#000000"
         app:title="编辑笔记"

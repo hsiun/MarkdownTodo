@@ -137,6 +137,19 @@ class NoteEditActivity : AppCompatActivity() {
             )
         }
 
+        // 处理系统窗口插入，避免内容与状态栏重叠
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            // 为工具栏添加状态栏高度的 padding，避免内容与状态栏重叠
+            binding.toolbar.setPadding(
+                binding.toolbar.paddingLeft,
+                systemBars.top,
+                binding.toolbar.paddingRight,
+                binding.toolbar.paddingBottom
+            )
+            insets
+        }
+
         // 获取传递的数据
         uuid = intent.getStringExtra("uuid") ?: ""
         isNewNote = intent.getBooleanExtra("isNewNote", false)
