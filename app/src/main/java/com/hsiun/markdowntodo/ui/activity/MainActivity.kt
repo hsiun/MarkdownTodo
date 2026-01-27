@@ -174,6 +174,7 @@ class MainActivity : AppCompatActivity(),
         // 初始隐藏笔记标题，显示Spinner（默认是待办页面）
         binding.notesTitleText.visibility = View.GONE
         binding.todoListSpinner.visibility = View.VISIBLE
+        binding.spinnerArrowIcon.visibility = View.VISIBLE
 
         setupTodoListSpinner()
 
@@ -342,6 +343,9 @@ class MainActivity : AppCompatActivity(),
                 if (binding.todoListSpinner.visibility != View.VISIBLE) {
                     binding.todoListSpinner.visibility = View.VISIBLE
                 }
+                if (binding.spinnerArrowIcon.visibility != View.VISIBLE) {
+                    binding.spinnerArrowIcon.visibility = View.VISIBLE
+                }
                 if (binding.notesTitleText.visibility != View.GONE) {
                     binding.notesTitleText.visibility = View.GONE
                 }
@@ -349,6 +353,9 @@ class MainActivity : AppCompatActivity(),
             1 -> {
                 if (binding.todoListSpinner.visibility != View.GONE) {
                     binding.todoListSpinner.visibility = View.GONE
+                }
+                if (binding.spinnerArrowIcon.visibility != View.GONE) {
+                    binding.spinnerArrowIcon.visibility = View.GONE
                 }
                 if (binding.notesTitleText.visibility != View.VISIBLE) {
                     binding.notesTitleText.visibility = View.VISIBLE
@@ -574,6 +581,7 @@ class MainActivity : AppCompatActivity(),
             0 -> {
                 // 待办页面 - 显示Spinner和待办列表
                 binding.todoListSpinner.visibility = View.VISIBLE
+                binding.spinnerArrowIcon.visibility = View.VISIBLE
                 binding.notesTitleText.visibility = View.GONE
                 // 刷新Spinner数据
                 refreshSpinner()
@@ -581,6 +589,7 @@ class MainActivity : AppCompatActivity(),
             1 -> {
                 // 笔记页面 - 显示笔记标题
                 binding.todoListSpinner.visibility = View.GONE
+                binding.spinnerArrowIcon.visibility = View.GONE
                 binding.notesTitleText.visibility = View.VISIBLE
                 updateNotesTitle() // 更新笔记标题
             }
