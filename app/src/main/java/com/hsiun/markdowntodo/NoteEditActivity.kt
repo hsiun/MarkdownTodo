@@ -300,6 +300,10 @@ class NoteEditActivity : AppCompatActivity() {
             binding.noteTitleTextView.visibility = View.VISIBLE
             binding.noteTitleTextView.text = note.title
             
+            // 显示时间信息
+            binding.noteTimeTextView.visibility = View.VISIBLE
+            binding.noteTimeTextView.text = "创建时间: ${note.createdAt} | 修改时间: ${note.updatedAt}"
+            
             binding.noteContentScrollView.visibility = View.VISIBLE
             // 移除边框（查看模式下不显示边框）
             binding.noteContentScrollView.background = null
@@ -315,6 +319,7 @@ class NoteEditActivity : AppCompatActivity() {
             
             // 隐藏编辑模式的视图
             binding.noteEditScrollView.visibility = View.GONE
+            binding.noteTimeEditTextView.visibility = View.GONE
             binding.markdownButtonsContainer.visibility = View.GONE
             binding.hintTextView.visibility = View.GONE
             
@@ -361,8 +366,12 @@ class NoteEditActivity : AppCompatActivity() {
                 false // 返回false，让ScrollView继续处理滑动事件
             }
             
-            // 标题和内容都可以点击进入编辑模式
+            // 标题、时间和内容都可以点击进入编辑模式
             binding.noteTitleTextView.setOnClickListener {
+                enterEditMode()
+            }
+            
+            binding.noteTimeTextView.setOnClickListener {
                 enterEditMode()
             }
             
@@ -431,6 +440,7 @@ class NoteEditActivity : AppCompatActivity() {
         
         // 隐藏查看模式的视图
         binding.noteContentScrollView.visibility = View.GONE
+        binding.noteTimeTextView.visibility = View.GONE
         
         // 显示编辑模式的视图
         binding.noteEditScrollView.visibility = View.VISIBLE
@@ -443,10 +453,17 @@ class NoteEditActivity : AppCompatActivity() {
             originalContent = note.content
             binding.noteTitleEditText.setText(note.title)
             binding.noteContentEditText.setText(note.content)
+            
+            // 显示时间信息
+            binding.noteTimeEditTextView.visibility = View.VISIBLE
+            binding.noteTimeEditTextView.text = "创建时间: ${note.createdAt} | 修改时间: ${note.updatedAt}"
         } ?: run {
             // 新建笔记时，原始内容为空
             originalTitle = ""
             originalContent = ""
+            
+            // 新建笔记时不显示时间
+            binding.noteTimeEditTextView.visibility = View.GONE
         }
         
         // 显示工具栏菜单（编辑模式下显示）

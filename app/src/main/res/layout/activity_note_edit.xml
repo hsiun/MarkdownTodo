@@ -49,6 +49,17 @@
                     android:textSize="24sp"
                     android:textColor="#000000"
                     android:textStyle="bold"
+                    android:paddingBottom="8dp"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <!-- 时间显示（查看模式） -->
+                <TextView
+                    android:id="@+id/noteTimeTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="#999999"
                     android:paddingBottom="16dp"
                     android:clickable="true"
                     android:focusable="true" />
@@ -95,8 +106,17 @@
                     android:textColor="#000000"
                     android:textStyle="bold"
                     android:background="@android:color/transparent"
-                    android:paddingBottom="16dp"
+                    android:paddingBottom="8dp"
                     android:maxLines="1" />
+
+                <!-- 时间显示（编辑模式） -->
+                <TextView
+                    android:id="@+id/noteTimeEditTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="#999999"
+                    android:paddingBottom="16dp" />
 
                 <!-- 编辑模式的内容输入 -->
                 <EditText
