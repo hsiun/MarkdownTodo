@@ -584,13 +584,6 @@ class NoteEditActivity : AppCompatActivity() {
             checkAndRequestPermissions()
         }
 
-        // 一级标题（仅 H 加粗，用 Html 保证数字不加粗）
-        binding.btnHeading1.typeface = Typeface.DEFAULT
-        binding.btnHeading1.text = Html.fromHtml("<b>H</b>1", Html.FROM_HTML_MODE_LEGACY)
-        binding.btnHeading1.setOnClickListener {
-            insertMarkdownTag("# ", "")
-        }
-
         // 二级标题
         binding.btnHeading2.typeface = Typeface.DEFAULT
         binding.btnHeading2.text = Html.fromHtml("<b>H</b>2", Html.FROM_HTML_MODE_LEGACY)
