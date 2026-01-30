@@ -56,13 +56,13 @@ data class NoteItem(
         return safeName
     }
 
-    // 保存到文件时使用新格式：第一行是隐藏的UUID注释，第二行是标题
+    // 保存到文件时使用新格式：第一行是隐藏的UUID注释，第二行是标题；正文与结束符 --- 之间保留一个空行
     fun toMarkdown(): String {
         return "<!-- UUID: $uuid -->\n" +
                 "# $title\n" +
                 "> 创建时间: $createdAt | 更新时间: $updatedAt\n" +
                 "---\n" +
-                content.trim() + "\n" +
+                content.trim() + "\n\n" +
                 "---\n"
     }
 
