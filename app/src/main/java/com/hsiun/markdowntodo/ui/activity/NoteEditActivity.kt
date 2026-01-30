@@ -273,6 +273,14 @@ class NoteEditActivity : AppCompatActivity() {
     }
 
     /**
+     * 将单个换行转为 Markdown 硬换行（行尾两空格+换行），使查看时与编辑时的换行一致。
+     * 标准 Markdown 中单个 \n 会被渲染成空格，只有「两空格+\n」或「\n\n」才会换行。
+     */
+    private fun ensureMarkdownLineBreaks(content: String): String {
+        return content.replace(Regex("(?<!\\n)\\n(?!\\n)"), "  \n")
+    }
+
+    /**
      * 预处理 Markdown 内容，将相对路径转换为 file:// 绝对路径
      */
     private fun preprocessImagePaths(content: String): String {
@@ -337,8 +345,9 @@ class NoteEditActivity : AppCompatActivity() {
             binding.noteContentScrollView.visibility = View.VISIBLE
             // 移除边框（查看模式下不显示边框）
             binding.noteContentScrollView.background = null
-            // 预处理 Markdown 内容：将相对路径转换为 file:// 绝对路径
-            val processedContent = preprocessImagePaths(note.content)
+            // 先保证单个换行在查看时显示为换行，再处理图片路径
+            val contentWithLineBreaks = ensureMarkdownLineBreaks(note.content)
+            val processedContent = preprocessImagePaths(contentWithLineBreaks)
             // 使用 Markwon 渲染 Markdown 内容
             try {
                 markwon.setMarkdown(binding.noteContentTextView, processedContent)
