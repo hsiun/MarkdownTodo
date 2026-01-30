@@ -97,6 +97,8 @@ class MainActivity : AppCompatActivity(),
     // 同步状态
     private var isSyncing = false
     private var lastSyncTime: Long = 0
+    /** 上次同步失败原因，用于点击图标时展示；同步成功后清空 */
+    private var lastSyncErrorMessage: String? = null
 
     companion object {
         // 使用伴生对象存储共享实例
@@ -395,6 +397,20 @@ class MainActivity : AppCompatActivity(),
             val intent = Intent(this, SettingsActivity::class.java)
             startActivity(intent)
         }
+
+        // 同步图标点击：失败时显示失败原因，否则触发同步
+        binding.syncStatusIcon.setOnClickListener {
+            val error = lastSyncErrorMessage
+            if (!error.isNullOrEmpty()) {
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.sync_error_title)
+                    .setMessage(error)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+            } else {
+                performSync(true)
+            }
+        }
     }
 
     private fun setupSwipeRefresh() {
@@ -673,6 +689,7 @@ class MainActivity : AppCompatActivity(),
     // 同时确保 onSyncSuccess 和 onSyncError 都停止刷新
     override fun onSyncSuccess(message: String) {
         runOnUiThread {
+            lastSyncErrorMessage = null
             binding.swipeRefreshLayout.isRefreshing = false
             isSyncing = false
             stopSyncAnimation()
@@ -691,6 +708,7 @@ class MainActivity : AppCompatActivity(),
     // 在 onSyncError 方法中添加冲突处理的提示
     override fun onSyncError(error: String) {
         runOnUiThread {
+            lastSyncErrorMessage = error
             binding.swipeRefreshLayout.isRefreshing = false
             isSyncing = false
             stopSyncAnimation()

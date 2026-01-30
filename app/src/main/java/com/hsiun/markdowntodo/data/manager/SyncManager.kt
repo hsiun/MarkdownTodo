@@ -391,6 +391,8 @@ class SyncManager(
         // 4. 再次推送本地更改到远程（拉取后可能有新的本地更改需要推送）
         pushToRemote()
 
+        // 整次同步流程全部结束后再通知成功，保证图标与真实状态一致
+        syncListener?.onSyncSuccess("同步成功")
         isSyncing = false
     }
 
@@ -987,7 +989,8 @@ class SyncManager(
                 filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/", "$DIR_IMAGES/"),
                 onSuccess = {
                     syncScope.launch {
-                        syncListener?.onSyncSuccess("同步成功")
+                        // 仅作为进度提示，不在此处调用 onSyncSuccess，由 fullSyncFlow 在整次同步结束后统一回调
+                        syncListener?.onSyncProgress("推送完成")
                         continuation.resume(Unit)
                     }
                 },
@@ -1028,7 +1031,8 @@ class SyncManager(
                     filePatterns = listOf("$DIR_TODO_LISTS/", "$DIR_NOTES/", "$DIR_IMAGES/"),
                     onSuccess = {
                         syncScope.launch {
-                            syncListener?.onSyncSuccess("同步成功（重试后）")
+                            // 重试推送仅恢复 continuation，最终成功由 fullSyncFlow 统一回调 onSyncSuccess
+                            syncListener?.onSyncProgress("重试推送完成")
                             continuation.resume(Unit)
                         }
                     },
