@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Typeface
+import android.text.Html
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -580,6 +582,27 @@ class NoteEditActivity : AppCompatActivity() {
         // 图片
         binding.btnImage.setOnClickListener {
             checkAndRequestPermissions()
+        }
+
+        // 一级标题（仅 H 加粗，用 Html 保证数字不加粗）
+        binding.btnHeading1.typeface = Typeface.DEFAULT
+        binding.btnHeading1.text = Html.fromHtml("<b>H</b>1", Html.FROM_HTML_MODE_LEGACY)
+        binding.btnHeading1.setOnClickListener {
+            insertMarkdownTag("# ", "")
+        }
+
+        // 二级标题
+        binding.btnHeading2.typeface = Typeface.DEFAULT
+        binding.btnHeading2.text = Html.fromHtml("<b>H</b>2", Html.FROM_HTML_MODE_LEGACY)
+        binding.btnHeading2.setOnClickListener {
+            insertMarkdownTag("## ", "")
+        }
+
+        // 三级标题
+        binding.btnHeading3.typeface = Typeface.DEFAULT
+        binding.btnHeading3.text = Html.fromHtml("<b>H</b>3", Html.FROM_HTML_MODE_LEGACY)
+        binding.btnHeading3.setOnClickListener {
+            insertMarkdownTag("### ", "")
         }
     }
 
