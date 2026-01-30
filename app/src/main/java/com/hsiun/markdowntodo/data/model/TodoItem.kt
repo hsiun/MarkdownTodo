@@ -46,13 +46,13 @@ data class TodoItem(
     ).format(Date())
 ) {
 
-    // 修改 toMarkdownLine 方法，添加更新时间
+    /** 输出为标准 Markdown 任务列表格式：- [x] 标题 <!-- 元数据 -->，元数据对解析器不可见 */
     fun toMarkdownLine(): String {
         val checkbox = if (isCompleted) "[x]" else "[ ]"
-        return "$checkbox $title | ID: $id | UUID: $uuid | Created: $createdAt | Updated: $updatedAt | " +
+        val meta = "ID: $id | UUID: $uuid | Created: $createdAt | Updated: $updatedAt | " +
                 "RemindTime: $remindTime | HasReminded: $hasReminded | " +
-                "RepeatType: $repeatType | NextRemindTime: $nextRemindTime | " +
-                "OriginalRemindTime: $originalRemindTime"
+                "RepeatType: $repeatType | NextRemindTime: $nextRemindTime | OriginalRemindTime: $originalRemindTime"
+        return "- $checkbox $title <!--  $meta -->"
     }
 
     // 新增：格式化时间显示（移出companion object）
@@ -140,84 +140,57 @@ data class TodoItem(
     }
 
     companion object {
-        //按行解析md文件中的待办
+        /** 按行解析 md 中的待办，格式：- [x] 标题 <!--  ID: ... | UUID: ... | ... --> */
         fun fromMarkdownLine(line: String): TodoItem? {
             return try {
-                // 打印原始行以便调试
-                Log.d("TodoItem", "原始行: $line")
+                val trimmed = line.trim()
+                if (!trimmed.startsWith("- ")) return null
+                val rest = trimmed.removePrefix("- ").trim()
+                val commentStart = " <!-- "
+                val commentEnd = " -->"
+                val idx = rest.indexOf(commentStart)
+                if (idx < 0) return null
+                val prefix = rest.substring(0, idx).trim()
+                val afterStart = rest.substring(idx + commentStart.length)
+                val endIdx = afterStart.indexOf(commentEnd)
+                if (endIdx < 0) return null
+                val metaStr = afterStart.substring(0, endIdx).trim()
 
-                // 尝试最新格式（带更新时间、重复类型和下次提醒时间）
-                val latestPattern = Regex("""\[([ x])\] (.+?) \| ID: (\d+) \| UUID: ([^ ]+) \| Created: (.+?) \| Updated: (.+?) \| """ +
-                        """RemindTime: (-?\d+) \| HasReminded: (true|false) \| """ +
-                        """RepeatType: (\d+) \| NextRemindTime: (-?\d+) \| """ +
-                        """OriginalRemindTime: (-?\d+)""")
-                val latestMatch = latestPattern.find(line)
+                val prefixRegex = Regex("""\[([ x])\]\s*(.*)""")
+                val prefixMatch = prefixRegex.find(prefix) ?: return null
+                val status = prefixMatch.groupValues[1]
+                val title = prefixMatch.groupValues[2].trim()
 
-                if (latestMatch != null) {
-                    // 使用groupValues而不是解构声明，因为解构最多只支持10个组件
-                    val groups = latestMatch.groupValues
-                    if (groups.size >= 12) { // groupValues[0]是整个匹配，后续是捕获组
-                        val status = groups[1]
-                        val title = groups[2]
-                        val id = groups[3]
-                        val uuid = groups[4]
-                        val createdAt = groups[5]
-                        val updatedAt = groups[6]
-                        val remindTimeStr = groups[7]
-                        val hasRemindedStr = groups[8]
-                        val repeatTypeStr = groups[9]
-                        val nextRemindTimeStr = groups[10]
-                        val originalRemindTimeStr = groups[11]
+                val meta = metaStr.split(" | ").mapNotNull { part ->
+                    val colonIdx = part.indexOf(": ")
+                    if (colonIdx < 0) null else part.substring(0, colonIdx).trim() to part.substring(colonIdx + 2).trim()
+                }.toMap()
 
-                        Log.d("TodoItem", "解析最新格式成功: ID=$id, 状态字符='$status', 状态=${status == "x"}")
-                        return TodoItem(
-                            id = id.toInt(),
-                            title = title,
-                            isCompleted = status.trim() == "x",
-                            createdAt = createdAt,
-                            uuid = uuid,
-                            remindTime = remindTimeStr.toLong(),
-                            hasReminded = hasRemindedStr.toBoolean(),
-                            repeatType = repeatTypeStr.toInt(),
-                            nextRemindTime = nextRemindTimeStr.toLong(),
-                            originalRemindTime = originalRemindTimeStr.toLong()
-                        ).apply {
-                            this.updatedAt = updatedAt
-                        }
-                    }
+                val id = meta["ID"]?.toIntOrNull() ?: return null
+                val uuid = meta["UUID"] ?: return null
+                val createdAt = meta["Created"] ?: return null
+                val updatedAt = meta["Updated"] ?: createdAt
+                val remindTime = meta["RemindTime"]?.toLongOrNull() ?: -1L
+                val hasReminded = meta["HasReminded"]?.toBooleanStrictOrNull() ?: false
+                val repeatType = meta["RepeatType"]?.toIntOrNull() ?: 0
+                val nextRemindTime = meta["NextRemindTime"]?.toLongOrNull() ?: -1L
+                val originalRemindTime = meta["OriginalRemindTime"]?.toLongOrNull() ?: -1L
+
+                Log.d("TodoItem", "解析成功: ID=$id, 状态='$status', 标题=$title")
+                TodoItem(
+                    id = id,
+                    title = title,
+                    isCompleted = status.trim() == "x",
+                    createdAt = createdAt,
+                    uuid = uuid,
+                    remindTime = remindTime,
+                    hasReminded = hasReminded,
+                    repeatType = repeatType,
+                    nextRemindTime = nextRemindTime,
+                    originalRemindTime = originalRemindTime
+                ).apply {
+                    this.updatedAt = updatedAt
                 }
-
-                // 尝试旧的新格式（没有UpdatedAt字段）
-                val newPattern = Regex("""\[([ x])\] (.+?) \| ID: (\d+) \| UUID: ([^ ]+) \| Created: (.+?) \| """ +
-                        """RemindTime: (-?\d+) \| HasReminded: (true|false) \| """ +
-                        """RepeatType: (\d+) \| NextRemindTime: (-?\d+) \| """ +
-                        """OriginalRemindTime: (-?\d+)""")
-                val newMatch = newPattern.find(line)
-
-                if (newMatch != null) {
-                    // 使用解构声明，因为只有10个组件
-                    val (status, title, id, uuid, createdAt, remindTimeStr, hasRemindedStr,
-                        repeatTypeStr, nextRemindTimeStr, originalRemindTimeStr) = newMatch.destructured
-                    Log.d("TodoItem", "解析旧的新格式成功: ID=$id, 状态字符='$status', 状态=${status == "x"}")
-                    return TodoItem(
-                        id = id.toInt(),
-                        title = title,
-                        isCompleted = status.trim() == "x",
-                        createdAt = createdAt,
-                        uuid = uuid,
-                        remindTime = remindTimeStr.toLong(),
-                        hasReminded = hasRemindedStr.toBoolean(),
-                        repeatType = repeatTypeStr.toInt(),
-                        nextRemindTime = nextRemindTimeStr.toLong(),
-                        originalRemindTime = originalRemindTimeStr.toLong()
-                    ).apply {
-                        // 对于旧格式，将updatedAt设置为createdAt，保持向后兼容
-                        this.updatedAt = createdAt
-                    }
-                }
-
-                Log.d("TodoItem", "无法解析任何格式的行: $line")
-                null
             } catch (e: Exception) {
                 Log.e("TodoItem", "解析失败: $line", e)
                 null
