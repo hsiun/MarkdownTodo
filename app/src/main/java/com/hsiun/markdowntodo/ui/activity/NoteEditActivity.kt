@@ -597,6 +597,11 @@ class NoteEditActivity : AppCompatActivity() {
         binding.btnHeading3.setOnClickListener {
             insertMarkdownTag("### ", "")
         }
+
+        // 表格
+        binding.btnTable.setOnClickListener {
+            insertTableTemplate()
+        }
     }
 
     /**
@@ -745,6 +750,23 @@ class NoteEditActivity : AppCompatActivity() {
         val newText = text.substring(0, start) + imageMarkdown + text.substring(start)
         editText.setText(newText)
         editText.setSelection(start + imageMarkdown.length)
+    }
+
+    /**
+     * 在光标位置插入 Markdown 表格模板
+     */
+    private fun insertTableTemplate() {
+        val editText = binding.noteContentEditText
+        val start = editText.selectionStart
+        val text = editText.text.toString()
+        val tableBlock = """
+            | 列1 | 列2 | 列3 |
+            | --- | --- | --- |
+            |  |  |  |
+        """.trimIndent() + "\n"
+        val newText = text.substring(0, start) + tableBlock + text.substring(start)
+        editText.setText(newText)
+        editText.setSelection(start + tableBlock.length)
     }
 
     /**

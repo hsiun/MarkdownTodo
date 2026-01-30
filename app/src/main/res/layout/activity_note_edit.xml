@@ -270,6 +270,19 @@
                 android:focusable="true"
                 android:padding="6dp" />
 
+            <ImageButton
+                android:id="@+id/btnTable"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="表格"
+                android:src="@drawable/ic_table"
+                app:tint="#FF9800"
+                android:padding="8dp" />
+
         </LinearLayout>
 
         <TextView
