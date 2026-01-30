@@ -289,9 +289,17 @@ class NoteEditActivity : AppCompatActivity() {
                 matchResult.value
             } else if (!imagePath.contains("://")) {
                 // 相对路径，转换为 file:// 绝对路径
-                val imageFile = File(repoDir, imagePath)
+                // 笔记文件存放在 git_repo/notes/，图片存放在 git_repo/images/
+                // 为了让桌面端可以使用 "../images/xxx.jpg" 这样的路径，
+                // 这里在本地加载时需要把 "../images/" 规范化回 "images/"
+                val normalizedPath = if (imagePath.startsWith("../images/")) {
+                    "images/" + imagePath.removePrefix("../images/")
+                } else {
+                    imagePath
+                }
+                val imageFile = File(repoDir, normalizedPath)
                 val absolutePath = "file://${imageFile.absolutePath}"
-                Log.d("NoteEditActivity", "预处理图片路径: $imagePath -> $absolutePath")
+                Log.d("NoteEditActivity", "预处理图片路径: $imagePath -> $absolutePath (normalized: $normalizedPath)")
                 "![$altText]($absolutePath)"
             } else {
                 // 其他协议（http/https），保持不变
@@ -636,8 +644,10 @@ class NoteEditActivity : AppCompatActivity() {
             // 复制图片到 Git 仓库的 images 目录
             val imageFile = saveImageToLocal(uri)
             if (imageFile != null) {
-                // 生成相对路径（相对于 Git 仓库根目录）
-                val imagePath = "images/${imageFile.name}"
+                // 生成相对路径（相对于 Git 仓库中的 notes 目录）
+                // 笔记 Markdown 文件保存在 git_repo/notes/，图片保存在 git_repo/images/
+                // 因此在 Markdown 中引用时应使用 "../images/xxx.jpg"
+                val imagePath = "../images/${imageFile.name}"
                 // 插入Markdown图片语法（使用相对路径）
                 insertImageMarkdown(imagePath)
                 Toast.makeText(this, "图片已添加", Toast.LENGTH_SHORT).show()
