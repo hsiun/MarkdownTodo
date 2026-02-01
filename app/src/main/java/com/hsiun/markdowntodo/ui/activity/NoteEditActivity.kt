@@ -3,6 +3,7 @@ package com.hsiun.markdowntodo.ui.activity
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -67,6 +68,11 @@ class NoteEditActivity : AppCompatActivity() {
     // 用于撤销的原始内容
     private var originalTitle: String = ""
     private var originalContent: String = ""
+
+    // 笔记阅读位置记忆
+    private val noteScrollPrefs by lazy {
+        getSharedPreferences("note_read_progress", Context.MODE_PRIVATE)
+    }
 
     // 图片相关
     private var currentPhotoUri: Uri? = null
@@ -367,9 +373,15 @@ class NoteEditActivity : AppCompatActivity() {
             // 隐藏工具栏菜单（查看模式下不显示）
             invalidateOptionsMenu()
 
-            // 重置滚动位置
-            binding.noteContentScrollView.scrollTo(0, 0)
-            lastScrollY = 0
+            // 恢复上次阅读位置
+            val savedScrollY = getSavedScrollPosition(uuid)
+            binding.noteContentScrollView.post {
+                val scrollView = binding.noteContentScrollView
+                val maxScrollY = (scrollView.getChildAt(0)?.height ?: 0) - scrollView.height
+                val targetScroll = savedScrollY.coerceIn(0, maxOf(0, maxScrollY))
+                scrollView.scrollTo(0, targetScroll)
+                lastScrollY = targetScroll
+            }
 
             // 设置滚动监听，实现工具栏的显示/隐藏
             setupScrollListener()
@@ -470,6 +482,10 @@ class NoteEditActivity : AppCompatActivity() {
      * 进入编辑模式
      */
     private fun enterEditMode() {
+        // 切换前保存查看模式的滚动位置
+        if (!isEditMode && binding.noteContentScrollView.visibility == View.VISIBLE) {
+            saveScrollPosition(uuid, binding.noteContentScrollView.scrollY)
+        }
         isEditMode = true
 
         // 确保工具栏始终显示（编辑模式下工具栏应该始终显示）
@@ -884,9 +900,33 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        // 在查看模式下离开时保存滚动位置
+        if (!isEditMode && uuid.isNotEmpty() && binding.noteContentScrollView.visibility == View.VISIBLE) {
+            saveScrollPosition(uuid, binding.noteContentScrollView.scrollY)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // 禁用滚动监听
         isScrollListenerEnabled = false
+    }
+
+    /**
+     * 保存笔记阅读位置
+     */
+    private fun saveScrollPosition(uuid: String, scrollY: Int) {
+        if (uuid.isEmpty()) return
+        noteScrollPrefs.edit().putInt("scroll_$uuid", scrollY).apply()
+    }
+
+    /**
+     * 获取保存的笔记阅读位置
+     */
+    private fun getSavedScrollPosition(uuid: String): Int {
+        if (uuid.isEmpty()) return 0
+        return noteScrollPrefs.getInt("scroll_$uuid", 0)
     }
 }
