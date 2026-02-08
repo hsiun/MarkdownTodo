@@ -116,7 +116,8 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
                 if (position != RecyclerView.NO_POSITION) {
-                    val todo = adapter.getTodoAtPosition(position)
+                    // 必须用 getItemAtPosition：position 对应的是当前显示的 filteredTodos，不是完整列表 todos
+                    val todo = adapter.getItemAtPosition(position)
                     todo?.let {
                         // 先恢复item位置
                         adapter.notifyItemChanged(position)
