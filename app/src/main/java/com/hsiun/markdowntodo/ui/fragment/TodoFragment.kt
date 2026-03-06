@@ -100,91 +100,14 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
         Log.d(TAG, "TodoFragment 初始化完成")
     }
     private fun setupSwipeToDelete() {
-        // 创建左滑删除的ItemTouchHelper回调
-        val swipeToDeleteCallback = object : ItemTouchHelper.SimpleCallback(
-            0, // 不支持拖动
-            ItemTouchHelper.LEFT // 只支持左滑
-        ) {
-            override fun onMove(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean {
-                return false // 不支持拖动
-            }
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val position = viewHolder.adapterPosition
-                if (position != RecyclerView.NO_POSITION) {
-                    // 必须用 getItemAtPosition：position 对应的是当前显示的 filteredTodos，不是完整列表 todos
-                    val todo = adapter.getItemAtPosition(position)
-                    todo?.let {
-                        // 先恢复item位置
-                        adapter.notifyItemChanged(position)
-                        // 直接调用MainActivity的删除确认对话框
-                        val mainActivity = activity as? MainActivity
-                        mainActivity?.showDeleteTodoConfirmationDialog(it)
-                    }
-                }
-            }
-
-            override fun onChildDraw(
-                canvas: Canvas,
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                dX: Float,
-                dY: Float,
-                actionState: Int,
-                isCurrentlyActive: Boolean
-            ) {
-                if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE) {
-                    val itemView = viewHolder.itemView
-
-                    // 向左滑动时绘制红色删除背景
-                    if (dX < 0) {
-                        // 绘制红色背景
-                        val background = ColorDrawable(Color.parseColor("#FF3B30"))
-                        background.setBounds(
-                            itemView.right + dX.toInt(),
-                            itemView.top,
-                            itemView.right,
-                            itemView.bottom
-                        )
-                        background.draw(canvas)
-
-                        // 绘制删除图标（如果没有图标资源，用文字代替）
-                        val paint = Paint()
-                        paint.color = Color.WHITE
-                        paint.textSize = 42f
-                        paint.isAntiAlias = true
-
-                        val text = "删除"
-                        val textWidth = paint.measureText(text)
-                        val textHeight = paint.descent() - paint.ascent()
-
-                        // 计算文字位置：在红色区域的中间
-                        val textX = itemView.right - textWidth - 48f
-                        val textY = itemView.top + (itemView.height - textHeight) / 2 - paint.ascent()
-
-                        canvas.drawText(text, textX, textY, paint)
-                    }
-                }
-
-                super.onChildDraw(canvas, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
-            }
-
-            override fun getSwipeEscapeVelocity(defaultValue: Float): Float {
-                // 降低滑动触发速度，更容易触发
-                return defaultValue * 0.5f
-            }
-
-            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float {
-                // 降低滑动阈值，更容易触发删除
-                return 0.2f
+        val callback = TodoItemTouchHelperCallback(requireContext(), binding.recyclerView) { position ->
+            val todo = adapter.getItemAtPosition(position)
+            todo?.let {
+                val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
+                mainActivity?.showDeleteTodoConfirmationDialog(it)
             }
         }
-
-        itemTouchHelper = ItemTouchHelper(swipeToDeleteCallback)
+        itemTouchHelper = androidx.recyclerview.widget.ItemTouchHelper(callback)
         itemTouchHelper.attachToRecyclerView(binding.recyclerView)
     }
 
