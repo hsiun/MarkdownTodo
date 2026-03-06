@@ -100,13 +100,45 @@ class TodoFragment : Fragment(), TodoManager.TodoChangeListener {
         Log.d(TAG, "TodoFragment 初始化完成")
     }
     private fun setupSwipeToDelete() {
-        val callback = TodoItemTouchHelperCallback(requireContext(), binding.recyclerView) { position ->
-            val todo = adapter.getItemAtPosition(position)
-            todo?.let {
-                val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
-                mainActivity?.showDeleteTodoConfirmationDialog(it)
+        val callback = TodoItemTouchHelperCallback(requireContext(), binding.recyclerView,
+            onDeleteClicked = { position ->
+                val todo = adapter.getItemAtPosition(position)
+                todo?.let {
+                    val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
+                    mainActivity?.showDeleteTodoConfirmationDialog(it)
+                }
+            },
+            onMoveClicked = { position ->
+                val todo = adapter.getItemAtPosition(position)
+                todo?.let {
+                    val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
+                    mainActivity?.let { ma ->
+                        val lists = ma.todoListManager.getAllLists()
+                        if (lists.size <= 1) {
+                            android.widget.Toast.makeText(requireContext(), "没有其他列表可移动", android.widget.Toast.LENGTH_SHORT).show()
+                            return@let
+                        }
+                        
+                        val currentListId = ma.todoListManager.getCurrentListId()
+                        val targetLists = lists.filter { list -> list.id != currentListId }
+                        val listNames = targetLists.map { list -> list.name }.toTypedArray()
+                        
+                        android.app.AlertDialog.Builder(requireContext())
+                            .setTitle("移动到列表")
+                            .setItems(listNames) { _, which ->
+                                val targetList = targetLists[which]
+                                val success = ma.todoManager.moveTodoToList(it, targetList.id)
+                                if (success) {
+                                    android.widget.Toast.makeText(requireContext(), "已移动到 ${targetList.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(requireContext(), "移动失败", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .show()
+                    }
+                }
             }
-        }
+        )
         itemTouchHelper = androidx.recyclerview.widget.ItemTouchHelper(callback)
         itemTouchHelper.attachToRecyclerView(binding.recyclerView)
     }

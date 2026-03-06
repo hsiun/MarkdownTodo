@@ -14,7 +14,8 @@ import com.hsiun.markdowntodo.R
 class TodoItemTouchHelperCallback(
     private val context: Context,
     private val recyclerView: RecyclerView,
-    private val onDeleteClicked: (Int) -> Unit
+    private val onDeleteClicked: (Int) -> Unit,
+    private val onMoveClicked: (Int) -> Unit
 ) : ItemTouchHelper.Callback() {
 
     private var openedViewHolder: RecyclerView.ViewHolder? = null
@@ -22,12 +23,19 @@ class TodoItemTouchHelperCallback(
     private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.apply {
         setTint(Color.parseColor("#FF3B30"))
     }
-    private val paint = Paint().apply { color = Color.parseColor("#FF3B30") }
+    private val moveIcon = ContextCompat.getDrawable(context, R.drawable.ic_list)?.apply {
+        setTint(Color.parseColor("#FF9800")) // Orange
+    }
     private var isDeleteButtonClicked = false
+    private var isMoveButtonClicked = false
     private var isDragging = false
 
+    private val buttonWidth: Float
+        get() = swipeThresholdLimit / 2f
+
     init {
-        swipeThresholdLimit = 80 * context.resources.displayMetrics.density
+        // 总宽度 140dp，每个按钮 70dp
+        swipeThresholdLimit = 140 * context.resources.displayMetrics.density
 
         // 拦截 RecyclerView 触摸事件，用于处理点击、保持展开等逻辑
         recyclerView.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
@@ -35,18 +43,29 @@ class TodoItemTouchHelperCallback(
                 if (e.action == MotionEvent.ACTION_DOWN) {
                     if (openedViewHolder != null) {
                         val itemView = openedViewHolder!!.itemView
-                        // 红色删除区域的范围计算
-                        val rect = RectF(
-                            itemView.right - swipeThresholdLimit,
+                        
+                        val rightBoundary = itemView.right.toFloat()
+                        val deleteRect = RectF(
+                            rightBoundary - buttonWidth,
                             itemView.top.toFloat(),
-                            itemView.right.toFloat(),
+                            rightBoundary,
+                            itemView.bottom.toFloat()
+                        )
+                        val moveRect = RectF(
+                            rightBoundary - swipeThresholdLimit,
+                            itemView.top.toFloat(),
+                            rightBoundary - buttonWidth,
                             itemView.bottom.toFloat()
                         )
                         
-                        if (rect.contains(e.x, e.y)) {
+                        if (deleteRect.contains(e.x, e.y)) {
                             // 点到了删除按钮
                             isDeleteButtonClicked = true
-                            return true // 拦截触摸事件
+                            return true
+                        } else if (moveRect.contains(e.x, e.y)) {
+                            // 点到了移动按钮
+                            isMoveButtonClicked = true
+                            return true
                         } else {
                             // 点到了其他地方，将其自动收回
                             val oldView = openedViewHolder!!.itemView
@@ -56,15 +75,23 @@ class TodoItemTouchHelperCallback(
                         }
                     }
                 } else if (e.action == MotionEvent.ACTION_UP) {
-                    if (isDeleteButtonClicked) {
+                    val pos = openedViewHolder?.adapterPosition ?: RecyclerView.NO_POSITION
+                    
+                    if (isDeleteButtonClicked || isMoveButtonClicked) {
+                        val isDelete = isDeleteButtonClicked
                         isDeleteButtonClicked = false
-                        val pos = openedViewHolder?.adapterPosition ?: RecyclerView.NO_POSITION
+                        isMoveButtonClicked = false
+                        
                         val oldView = openedViewHolder?.itemView
                         openedViewHolder = null
                         oldView?.animate()?.translationX(0f)?.setDuration(200)?.start()
                         
                         if (pos != RecyclerView.NO_POSITION) {
-                            onDeleteClicked(pos)
+                            if (isDelete) {
+                                onDeleteClicked(pos)
+                            } else {
+                                onMoveClicked(pos)
+                            }
                         }
                         return true
                     }
@@ -73,15 +100,22 @@ class TodoItemTouchHelperCallback(
             }
 
             override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                if (e.action == MotionEvent.ACTION_UP && isDeleteButtonClicked) {
+                if (e.action == MotionEvent.ACTION_UP && (isDeleteButtonClicked || isMoveButtonClicked)) {
+                    val isDelete = isDeleteButtonClicked
                     isDeleteButtonClicked = false
+                    isMoveButtonClicked = false
+                    
                     val pos = openedViewHolder?.adapterPosition ?: RecyclerView.NO_POSITION
                     val oldView = openedViewHolder?.itemView
                     openedViewHolder = null
                     oldView?.animate()?.translationX(0f)?.setDuration(200)?.start()
                     
                     if (pos != RecyclerView.NO_POSITION) {
-                        onDeleteClicked(pos)
+                        if (isDelete) {
+                            onDeleteClicked(pos)
+                        } else {
+                            onMoveClicked(pos)
+                        }
                     }
                 }
             }
@@ -101,7 +135,6 @@ class TodoItemTouchHelperCallback(
         target: RecyclerView.ViewHolder
     ): Boolean = false
 
-    // 这个参数决定了需要滑多远才能触发真正的 onSwiped（我们设得很高，永远不触发）
     override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float {
         return 2.0f
     }
@@ -133,7 +166,7 @@ class TodoItemTouchHelperCallback(
                     newDx = dX - swipeThresholdLimit
                 }
                 
-                // 限制最多只能向左滑出删除按钮的宽度，且不能向右滑出屏幕
+                // 限制最多只能向左滑出所有按钮的宽度，且不能向右滑出屏幕
                 if (newDx < -swipeThresholdLimit) newDx = -swipeThresholdLimit
                 if (newDx > 0f) newDx = 0f
                 
@@ -142,7 +175,7 @@ class TodoItemTouchHelperCallback(
                 if (isDragging) {
                     isDragging = false
                     // 手指刚刚松开，判断释放时的位置决定是合上还是展开
-                    val targetX = if (itemView.translationX <= -swipeThresholdLimit / 2) {
+                    val targetX = if (itemView.translationX <= -buttonWidth / 2) {
                         openedViewHolder = viewHolder
                         -swipeThresholdLimit
                     } else {
@@ -152,15 +185,26 @@ class TodoItemTouchHelperCallback(
                     // 启动我们自己的动画
                     itemView.animate().translationX(targetX).setDuration(200).start()
                 }
-                // 注意：在手指释放期间，直接忽略 ItemTouchHelper 传进来的 dX
-                // 而是让上面我们自己的 itemView.animate() 来接管位移！
             }
 
-            // 绘制底层的红色背景和垃圾桶图标，跟随当前 itemView 实际的 translationX
+            // 绘制底层的图标，跟随当前 itemView 实际的 translationX
             val currentTx = itemView.translationX
             if (currentTx < 0) {
+                // 绘制 Delete
                 deleteIcon?.let {
-                    val iconMargin = (swipeThresholdLimit - it.intrinsicWidth) / 2
+                    val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
+                    val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
+                    val iconLeft = itemView.right - buttonWidth + iconMargin
+                    val iconRight = iconLeft + it.intrinsicWidth
+                    val iconBottom = iconTop + it.intrinsicHeight
+
+                    it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
+                    it.draw(c)
+                }
+                
+                // 绘制 Move
+                moveIcon?.let {
+                    val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
                     val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
                     val iconLeft = itemView.right - swipeThresholdLimit + iconMargin
                     val iconRight = iconLeft + it.intrinsicWidth
@@ -177,8 +221,6 @@ class TodoItemTouchHelperCallback(
 
     override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
         super.clearView(recyclerView, viewHolder)
-        // ItemTouchHelper 在自己的恢复动画结束后会强行将位移归零
-        // 如果当前项是我们需要保持展开的项，我们要把它再强制设回去
         if (viewHolder == openedViewHolder) {
             viewHolder.itemView.translationX = -swipeThresholdLimit
         }
