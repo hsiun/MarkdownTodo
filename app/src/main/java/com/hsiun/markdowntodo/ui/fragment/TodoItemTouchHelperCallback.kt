@@ -20,7 +20,7 @@ class TodoItemTouchHelperCallback(
     private var openedViewHolder: RecyclerView.ViewHolder? = null
     private var swipeThresholdLimit = 0f
     private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.apply {
-        setTint(Color.WHITE)
+        setTint(Color.parseColor("#FF3B30"))
     }
     private val paint = Paint().apply { color = Color.parseColor("#FF3B30") }
     private var isDeleteButtonClicked = false
@@ -159,14 +159,6 @@ class TodoItemTouchHelperCallback(
             // 绘制底层的红色背景和垃圾桶图标，跟随当前 itemView 实际的 translationX
             val currentTx = itemView.translationX
             if (currentTx < 0) {
-                val backgroundRect = RectF(
-                    itemView.right + currentTx,
-                    itemView.top.toFloat(),
-                    itemView.right.toFloat(),
-                    itemView.bottom.toFloat()
-                )
-                c.drawRect(backgroundRect, paint)
-
                 deleteIcon?.let {
                     val iconMargin = (swipeThresholdLimit - it.intrinsicWidth) / 2
                     val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
