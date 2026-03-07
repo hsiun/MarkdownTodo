@@ -1,46 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="8dp"
-    android:layout_marginVertical="4dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="1dp"
-    app:cardUseCompatPadding="true">
+    android:layout_marginVertical="4dp">
 
+    <!-- 底层删除按钮（固定在右侧，宽度 70dp） -->
     <LinearLayout
-        android:id="@+id/noteItemContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:id="@+id/deleteActionLayout"
+        android:layout_width="70dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@drawable/bg_delete_btn"
+        android:gravity="center"
         android:orientation="vertical"
-        android:padding="8dp"
-        android:background="?android:attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true">
 
-        <TextView
-            android:id="@+id/noteTitleText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="笔记标题"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="#333333"
-            android:maxLines="1"
-            android:ellipsize="end" />
-
-        <TextView
-            android:id="@+id/noteDateAndPreviewText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="2023-01-01 | 笔记内容预览..."
-            android:textSize="12sp"
-            android:textColor="#999999"
-            android:maxLines="1"
-            android:ellipsize="end" />
-
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_delete"
+            app:tint="#FFFFFF" />
     </LinearLayout>
 
-</androidx.cardview.widget.CardView>
+    <!-- 原来的卡片主内容（表层，覆盖在上面） -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/main_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="1dp"
+        app:cardUseCompatPadding="false">
+
+        <LinearLayout
+            android:id="@+id/noteItemContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:minHeight="56dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/noteTitleText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="笔记标题"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#333333"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/noteDateAndPreviewText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="2023-01-01 | 笔记内容预览..."
+                android:textSize="12sp"
+                android:textColor="#999999"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+</FrameLayout>
