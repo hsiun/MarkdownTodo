@@ -21,7 +21,6 @@ import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.AdapterView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -179,7 +178,7 @@ class MainActivity : AppCompatActivity(),
         initManagers()
 
         // 初始隐藏笔记标题，显示Spinner（默认是待办页面）
-        binding.notesTitleText.visibility = View.GONE
+        binding.noteCategorySpinner.visibility = View.GONE
         binding.todoListSpinner.visibility = View.VISIBLE
         binding.spinnerArrowIcon.visibility = View.VISIBLE
 
@@ -356,8 +355,8 @@ class MainActivity : AppCompatActivity(),
                 if (binding.spinnerArrowIcon.visibility != View.VISIBLE) {
                     binding.spinnerArrowIcon.visibility = View.VISIBLE
                 }
-                if (binding.notesTitleText.visibility != View.GONE) {
-                    binding.notesTitleText.visibility = View.GONE
+                if (binding.noteCategorySpinner.visibility != View.GONE) {
+                    binding.noteCategorySpinner.visibility = View.GONE
                 }
             }
             1 -> {
@@ -367,13 +366,25 @@ class MainActivity : AppCompatActivity(),
                 if (binding.spinnerArrowIcon.visibility != View.GONE) {
                     binding.spinnerArrowIcon.visibility = View.GONE
                 }
-                if (binding.notesTitleText.visibility != View.VISIBLE) {
-                    binding.notesTitleText.visibility = View.VISIBLE
+                if (binding.noteCategorySpinner.visibility != View.VISIBLE) {
+                    binding.noteCategorySpinner.visibility = View.VISIBLE
                     updateNotesTitle()
                 }
             }
         }
     }
+    
+    fun refreshNoteCategorySpinner() {
+        if (!::noteCategorySpinnerAdapter.isInitialized) return
+        val categories = noteCategoryManager.getAllCategories()
+        noteCategorySpinnerAdapter.clear()
+        noteCategorySpinnerAdapter.addAll(categories)
+        noteCategorySpinnerAdapter.notifyDataSetChanged()
+        
+        val currentIndex = categories.indexOfFirst { it.isSelected }.coerceAtLeast(0)
+        binding.noteCategorySpinner.setSelection(currentIndex)
+    }
+    
     private fun refreshSpinner() {
         todoListSpinnerAdapter = TodoListSpinnerAdapter(this, todoListManager.getAllLists())
         val spinner = binding.todoListSpinner
@@ -606,7 +617,7 @@ class MainActivity : AppCompatActivity(),
                 // 待办页面 - 显示Spinner和待办列表
                 binding.todoListSpinner.visibility = View.VISIBLE
                 binding.spinnerArrowIcon.visibility = View.VISIBLE
-                binding.notesTitleText.visibility = View.GONE
+                binding.noteCategorySpinner.visibility = View.GONE
                 // 刷新Spinner数据
                 refreshSpinner()
             }
@@ -614,7 +625,7 @@ class MainActivity : AppCompatActivity(),
                 // 笔记页面 - 显示笔记标题
                 binding.todoListSpinner.visibility = View.GONE
                 binding.spinnerArrowIcon.visibility = View.GONE
-                binding.notesTitleText.visibility = View.VISIBLE
+                binding.noteCategorySpinner.visibility = View.VISIBLE
                 updateNotesTitle() // 更新笔记标题
             }
         }
@@ -622,7 +633,7 @@ class MainActivity : AppCompatActivity(),
     // 新增方法：更新笔记标题
     private fun updateNotesTitle() {
         val noteCount = noteManager.getAllNotes().size
-        binding.notesTitleText.text = "默认笔记 ($noteCount) 条"
+        binding.noteCategorySpinner.text = "默认笔记 ($noteCount) 条"
     }
     private fun updatePageCounts() {
         when (currentPage) {
@@ -1040,8 +1051,7 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    private fun setupTodoListSpinner()
-        setupNoteCategorySpinner() {
+    private fun setupTodoListSpinner() {
         // 移除原来的 todoCountText，改用 Spinner
         val spinner = binding.todoListSpinner
 
