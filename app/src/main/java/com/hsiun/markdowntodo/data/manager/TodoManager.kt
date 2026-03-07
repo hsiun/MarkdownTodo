@@ -12,6 +12,10 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TodoManager(private val context: Context) {
 
@@ -23,6 +27,7 @@ class TodoManager(private val context: Context) {
     }
 
     private var todos = mutableListOf<TodoItem>()
+    private val scope = CoroutineScope(Dispatchers.IO)
     private var nextId = 1
     private var todoChangeListener: TodoChangeListener? = null
     private lateinit var todoListManager: TodoListManager
@@ -415,32 +420,42 @@ class TodoManager(private val context: Context) {
 
     // 保存当前列表的待办事项到Git目录
     private fun saveCurrentListTodos() {
-        try {
-            val repoDir = File(context.filesDir, GIT_REPO_DIR)
-            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+        // Create a snapshot of the list to avoid ConcurrentModificationException during IO
+        val todosSnapshot = todos.toList()
+        val currentListId = todoListManager.getCurrentListId()
+        val currentListFileName = todoListManager.getCurrentListFileName()
+        
+        scope.launch {
+            try {
+                val repoDir = File(context.filesDir, GIT_REPO_DIR)
+                val todoListsDir = File(repoDir, DIR_TODO_LISTS)
 
-            if (!todoListsDir.exists()) {
-                todoListsDir.mkdirs()
+                if (!todoListsDir.exists()) {
+                    todoListsDir.mkdirs()
+                }
+
+                val listFile = File(todoListsDir, currentListFileName)
+
+                saveTodosToFile(todosSnapshot, listFile)
+
+                // 更新列表统计
+                val total = todosSnapshot.size
+                val active = todosSnapshot.count { !it.isCompleted }
+                withContext(Dispatchers.Main) {
+                    todoListManager.updateListCount(
+                        currentListId,
+                        total,
+                        active
+                    )
+                }
+
+                Log.d(TAG, "已保存待办事项到Git目录: ${listFile.absolutePath}")
+            } catch (e: Exception) {
+                Log.e(TAG, "保存失败", e)
+                withContext(Dispatchers.Main) {
+                    todoChangeListener?.onTodoError("保存失败: ${e.message}")
+                }
             }
-
-            val currentListFileName = todoListManager.getCurrentListFileName()
-            val listFile = File(todoListsDir, currentListFileName)
-
-            saveTodosToFile(todos, listFile)
-
-            // 更新列表统计
-            val total = todos.size
-            val active = todos.count { !it.isCompleted }
-            todoListManager.updateListCount(
-                todoListManager.getCurrentListId(),
-                total,
-                active
-            )
-
-            Log.d(TAG, "已保存待办事项到Git目录: ${listFile.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "保存失败", e)
-            todoChangeListener?.onTodoError("保存失败: ${e.message}")
         }
     }
 
@@ -595,20 +610,23 @@ class TodoManager(private val context: Context) {
 
     // 新增：按文件名保存待办事项
     private fun saveTodosToFileWithName(todosToSave: List<TodoItem>, fileName: String) {
-        try {
-            val repoDir = File(context.filesDir, GIT_REPO_DIR)
-            val todoListsDir = File(repoDir, DIR_TODO_LISTS)
+        val snapshot = todosToSave.toList()
+        scope.launch {
+            try {
+                val repoDir = File(context.filesDir, GIT_REPO_DIR)
+                val todoListsDir = File(repoDir, DIR_TODO_LISTS)
 
-            if (!todoListsDir.exists()) {
-                todoListsDir.mkdirs()
+                if (!todoListsDir.exists()) {
+                    todoListsDir.mkdirs()
+                }
+
+                val listFile = File(todoListsDir, fileName)
+                saveTodosToFile(snapshot, listFile)
+
+                Log.d(TAG, "已保存 ${snapshot.size} 条待办到文件: $fileName")
+            } catch (e: Exception) {
+                Log.e(TAG, "按文件名保存失败", e)
             }
-
-            val listFile = File(todoListsDir, fileName)
-            saveTodosToFile(todosToSave, listFile)
-
-            Log.d(TAG, "已保存 ${todosToSave.size} 条待办到文件: $fileName")
-        } catch (e: Exception) {
-            Log.e(TAG, "按文件名保存失败", e)
         }
     }
 
