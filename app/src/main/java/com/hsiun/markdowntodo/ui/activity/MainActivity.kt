@@ -377,9 +377,9 @@ class MainActivity : AppCompatActivity(),
     fun refreshNoteCategorySpinner() {
         if (!::noteCategorySpinnerAdapter.isInitialized) return
         val categories = noteCategoryManager.getAllCategories()
-        noteCategorySpinnerAdapter.clear()
-        noteCategorySpinnerAdapter.addAll(categories)
-        noteCategorySpinnerAdapter.notifyDataSetChanged()
+        // 重新创建适配器以避免不可变列表的修改问题
+        noteCategorySpinnerAdapter = NoteCategorySpinnerAdapter(this, categories)
+        binding.noteCategorySpinner.adapter = noteCategorySpinnerAdapter
         
         val currentIndex = categories.indexOfFirst { it.isSelected }.coerceAtLeast(0)
         binding.noteCategorySpinner.setSelection(currentIndex)
