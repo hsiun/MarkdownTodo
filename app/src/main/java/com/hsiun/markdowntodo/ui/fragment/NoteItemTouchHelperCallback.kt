@@ -20,7 +20,7 @@ class NoteItemTouchHelperCallback(
     private var openedViewHolder: RecyclerView.ViewHolder? = null
     private var swipeThresholdLimit = 0f
     private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.apply {
-        setTint(Color.parseColor("#FF3B30"))
+        setTint(Color.parseColor("#FF3B30")
     }
     private val moveIcon = ContextCompat.getDrawable(context, R.drawable.ic_list)?.apply {
         setTint(Color.parseColor("#FF9800")) // Orange
