@@ -3,6 +3,7 @@ package com.hsiun.markdowntodo.ui.activity
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import java.io.File
 import android.view.MenuItem
 import android.view.View
 import android.view.WindowInsetsController
@@ -145,4 +146,36 @@ class SettingsActivity : AppCompatActivity() {
     override fun onBackPressed() {
         super.onBackPressed()
     }
+
+
+    fun clearCache(view: View) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("清理缓存")
+            .setMessage("确定要清理本地缓存吗？这不会删除您的任何数据。")
+            .setPositiveButton("清理") { _, _ ->
+                try {
+                    // 清理内部缓存
+                    cacheDir.delete()
+                    // 清理文件缓存
+                    val repoDir = File(filesDir, "git_repo")
+                    if (repoDir.exists()) {
+                        // 只清理 .git 目录下的 pack 文件以节省空间，但保留数据
+                        val gitDir = File(repoDir, ".git")
+                        if (gitDir.exists()) {
+                            gitDir.listFiles()?.forEach { file ->
+                                if (file.isFile && file.name.endsWith(".pack")) {
+                                    file.delete()
+                                }
+                            }
+                        }
+                    }
+                    Toast.makeText(this, "缓存已清理", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this, "清理失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
 }
