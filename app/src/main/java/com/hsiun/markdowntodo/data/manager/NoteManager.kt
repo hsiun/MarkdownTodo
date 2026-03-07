@@ -458,10 +458,17 @@ class NoteManager(private val context: Context) {
             val noteToDelete = notes[noteIndex]
             notes.removeAt(noteIndex)
 
+            val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
+            val targetDir = if (currentCat?.folderName?.isNotEmpty() == true) {
+                java.io.File(notesDir, currentCat.folderName)
+            } else {
+                notesDir
+            }
+
             // 删除对应的文件
             val fileName = noteFileMap.remove(uuid)
             if (fileName != null) {
-                val noteFile = File(notesDir, fileName)
+                val noteFile = File(targetDir, fileName)
                 if (noteFile.exists()) {
                     val deleted = noteFile.delete()
                     if (deleted) {
@@ -539,12 +546,20 @@ class NoteManager(private val context: Context) {
     }
     private fun saveNoteToFile(note: NoteItem) {
         try {
+            val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
+            val targetDir = if (currentCat?.folderName?.isNotEmpty() == true) {
+                java.io.File(notesDir, currentCat.folderName)
+            } else {
+                notesDir
+            }
+            if (!targetDir.exists()) targetDir.mkdirs()
+
             val newFileName = getFileNameForNote(note)
             val oldFileName = noteFileMap[note.uuid]
 
             // 如果存在旧文件且文件名不同，删除旧文件
             if (oldFileName != null && oldFileName != newFileName) {
-                val oldFile = File(notesDir, oldFileName)
+                val oldFile = File(targetDir, oldFileName)
                 if (oldFile.exists()) {
                     oldFile.delete()
                     Log.d(TAG, "删除旧文件: $oldFileName")
@@ -552,7 +567,7 @@ class NoteManager(private val context: Context) {
             }
 
             // 保存新文件
-            val noteFile = File(notesDir, newFileName)
+            val noteFile = File(targetDir, newFileName)
             noteFile.writeText(note.toMarkdown())
             noteFileMap[note.uuid] = newFileName
             // 清理可能的重复文件
