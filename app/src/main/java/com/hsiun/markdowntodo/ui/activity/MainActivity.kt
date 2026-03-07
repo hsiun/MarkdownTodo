@@ -239,7 +239,7 @@ class MainActivity : AppCompatActivity(),
         // 初始化NoteManager
         noteManager = NoteManager(this)
         noteCategoryManager = NoteCategoryManager(this)
-        noteManager.init(noteCategoryManager)
+        noteManager.setCategoryManager(noteCategoryManager)
         noteManager.setNoteChangeListener(this)
 
         // 初始化对话框管理器
@@ -632,8 +632,7 @@ class MainActivity : AppCompatActivity(),
     }
     // 新增方法：更新笔记标题
     private fun updateNotesTitle() {
-        val noteCount = noteManager.getAllNotes().size
-        binding.noteCategorySpinner.text = "默认笔记 ($noteCount) 条"
+        refreshNoteCategorySpinner()
     }
     private fun updatePageCounts() {
         when (currentPage) {

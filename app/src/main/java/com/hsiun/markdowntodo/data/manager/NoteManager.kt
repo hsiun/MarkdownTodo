@@ -3,6 +3,7 @@ package com.hsiun.markdowntodo.data.manager
 import android.content.Context
 import android.util.Log
 import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.data.manager.NoteCategoryManager
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -32,6 +33,12 @@ class NoteManager(private val context: Context) {
     }
 
     private var noteChangeListener: NoteChangeListener? = null
+    private lateinit var categoryManager: NoteCategoryManager
+
+    fun setCategoryManager(categoryManager: NoteCategoryManager) {
+        this.categoryManager = categoryManager
+    }
+
 
     init {
         // 确保目录存在
