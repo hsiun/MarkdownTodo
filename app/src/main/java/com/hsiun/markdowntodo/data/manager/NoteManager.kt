@@ -60,17 +60,24 @@ class NoteManager(private val context: Context) {
             notes.clear()
             noteFileMap.clear()
 
-            if (!notesDir.exists() || !notesDir.isDirectory) {
-                Log.d(TAG, "笔记目录不存在，创建目录")
-                notesDir.mkdirs()
+            val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
+            val targetDir = if (currentCat?.folderName?.isNotEmpty() == true) {
+                java.io.File(notesDir, currentCat.folderName)
+            } else {
+                notesDir
+            }
+
+            if (!targetDir.exists() || !targetDir.isDirectory) {
+                Log.d(TAG, "笔记目录不存在，创建目录: ${targetDir.absolutePath}")
+                targetDir.mkdirs()
                 noteChangeListener?.onNotesChanged(emptyList())
                 return
             }
 
-            Log.d(TAG, "笔记目录路径: ${notesDir.absolutePath}")
+            Log.d(TAG, "笔记目录路径: ${targetDir.absolutePath}")
 
             // 列出目录中的所有文件（用于调试）
-            val allFiles = notesDir.listFiles() ?: emptyArray()
+            val allFiles = targetDir.listFiles() ?: emptyArray()
             Log.d(TAG, "目录中的所有文件数量: ${allFiles.size}")
             allFiles.forEach { file ->
                 Log.d(TAG, "目录中的文件: ${file.name}, 是文件: ${file.isFile}, 是目录: ${file.isDirectory}")
