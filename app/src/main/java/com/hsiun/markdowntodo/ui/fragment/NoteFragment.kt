@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.hsiun.markdowntodo.ui.adapter.NoteAdapter
 import com.hsiun.markdowntodo.data.model.NoteItem
+import com.hsiun.markdowntodo.data.model.NoteCategory
 import com.hsiun.markdowntodo.data.manager.NoteManager
 import com.hsiun.markdowntodo.databinding.FragmentNoteBinding
 import com.hsiun.markdowntodo.ui.activity.MainActivity
