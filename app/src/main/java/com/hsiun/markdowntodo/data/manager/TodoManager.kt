@@ -357,8 +357,8 @@ class TodoManager(private val context: Context) {
             saveCurrentListTodos()
             
             // 4. 读取目标列表内容
-            val repoDir = java.io.File(context.filesDir, com.hsiun.markdowntodo.data.manager.GIT_REPO_DIR)
-            val todoListsDir = java.io.File(repoDir, com.hsiun.markdowntodo.data.manager.DIR_TODO_LISTS)
+            val repoDir = java.io.File(context.filesDir, GIT_REPO_DIR)
+            val todoListsDir = java.io.File(repoDir, DIR_TODO_LISTS)
             val targetListFile = java.io.File(todoListsDir, targetList.fileName)
             
             val targetTodos = if (targetListFile.exists()) {
