@@ -336,6 +336,58 @@ class TodoManager(private val context: Context) {
             throw e
         }
     }
+    
+
+    fun moveTodoToList(todo: com.hsiun.markdowntodo.data.model.TodoItem, targetListId: String): Boolean {
+        try {
+            // 1. 获取目标列表
+            val targetList = todoListManager.getAllLists().find { it.id == targetListId }
+            if (targetList == null) {
+                android.util.Log.e(TAG, "目标列表不存在: $targetListId")
+                return false
+            }
+
+            // 2. 如果目标就是当前列表，则忽略
+            if (targetListId == todoListManager.getCurrentListId()) {
+                return false
+            }
+
+            // 3. 从当前列表移除
+            todos.removeAll { it.uuid == todo.uuid }
+            saveCurrentListTodos()
+            
+            // 4. 读取目标列表内容
+            val repoDir = java.io.File(context.filesDir, com.hsiun.markdowntodo.data.manager.GIT_REPO_DIR)
+            val todoListsDir = java.io.File(repoDir, com.hsiun.markdowntodo.data.manager.DIR_TODO_LISTS)
+            val targetListFile = java.io.File(todoListsDir, targetList.fileName)
+            
+            val targetTodos = if (targetListFile.exists()) {
+                readTodosFromFile(targetListFile).toMutableList()
+            } else {
+                mutableListOf()
+            }
+            
+            // 5. 将待办加入目标列表
+            targetTodos.add(todo)
+            
+            // 6. 保存目标列表
+            saveTodosToFile(targetTodos, targetListFile)
+            
+            // 7. 更新目标列表统计信息
+            val total = targetTodos.size
+            val active = targetTodos.count { !it.isCompleted }
+            todoListManager.updateListCount(targetListId, total, active)
+            
+            // 8. 触发事件让UI更新当前列表（移除了当前项）
+            todoChangeListener?.onTodosChanged(todos.toList())
+            
+            return true
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "移动待办失败", e)
+            return false
+        }
+    }
+
     fun deleteTodo(id: Int): TodoItem {
         return try {
             val todoIndex = todos.indexOfFirst { it.id == id }

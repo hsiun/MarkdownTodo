@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity(),
     lateinit var syncManager: SyncManager
     lateinit var settingsManager: SettingsManager
     lateinit var settingsDialogManager: SettingsDialogManager
-    private lateinit var todoListManager: TodoListManager
+    lateinit var todoListManager: TodoListManager
     private lateinit var todoListSpinnerAdapter: TodoListSpinnerAdapter
     // 页面适配器
     private lateinit var mainPagerAdapter: MainPagerAdapter
