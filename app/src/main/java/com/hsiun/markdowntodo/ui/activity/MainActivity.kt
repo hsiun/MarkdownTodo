@@ -33,6 +33,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
 import com.hsiun.markdowntodo.R
 import com.hsiun.markdowntodo.data.manager.NoteManager
+import com.hsiun.markdowntodo.data.manager.NoteCategoryManager
 import com.hsiun.markdowntodo.data.manager.SettingsManager
 import com.hsiun.markdowntodo.data.manager.SyncManager
 import com.hsiun.markdowntodo.data.manager.TodoListManager
