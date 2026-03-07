@@ -50,14 +50,14 @@
                             android:minWidth="120dp"
                             android:visibility="visible" />
 
-                        <TextView
-                            android:id="@+id/notesTitleText"
+                        <Spinner
+                            android:id="@+id/noteCategorySpinner"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="默认笔记"
-                            android:textSize="26sp"
-                            android:textColor="@android:color/black"
-                            android:gravity="center_vertical"
+                            android:background="@android:color/transparent"
+                            android:spinnerMode="dropdown"
+                            android:minHeight="48dp"
+                            android:minWidth="120dp"
                             android:visibility="gone" />
 
                     </FrameLayout>

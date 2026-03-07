@@ -21,6 +21,7 @@ import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.AdapterView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -43,6 +44,7 @@ import com.hsiun.markdowntodo.data.model.TodoItem
 import com.hsiun.markdowntodo.databinding.ActivityMainBinding
 import com.hsiun.markdowntodo.ui.adapter.TodoAdapter
 import com.hsiun.markdowntodo.ui.adapter.TodoListSpinnerAdapter
+import com.hsiun.markdowntodo.ui.adapter.NoteCategorySpinnerAdapter
 import com.hsiun.markdowntodo.ui.dialog.NoteDialogManager
 import com.hsiun.markdowntodo.ui.dialog.SettingsDialogManager
 import com.hsiun.markdowntodo.ui.dialog.TodoDialogManager
@@ -90,6 +92,7 @@ class MainActivity : AppCompatActivity(),
     lateinit var settingsDialogManager: SettingsDialogManager
     lateinit var todoListManager: TodoListManager
     private lateinit var todoListSpinnerAdapter: TodoListSpinnerAdapter
+    private lateinit var noteCategorySpinnerAdapter: NoteCategorySpinnerAdapter
     // 页面适配器
     private lateinit var mainPagerAdapter: MainPagerAdapter
 
@@ -181,6 +184,7 @@ class MainActivity : AppCompatActivity(),
         binding.spinnerArrowIcon.visibility = View.VISIBLE
 
         setupTodoListSpinner()
+        setupNoteCategorySpinner()
 
         // 设置TodoDialogManager的FragmentManager
         todoDialogManager.setFragmentManager(supportFragmentManager)
@@ -236,6 +240,7 @@ class MainActivity : AppCompatActivity(),
         // 初始化NoteManager
         noteManager = NoteManager(this)
         noteCategoryManager = NoteCategoryManager(this)
+        noteManager.init(noteCategoryManager)
         noteManager.setNoteChangeListener(this)
 
         // 初始化对话框管理器
@@ -991,7 +996,52 @@ class MainActivity : AppCompatActivity(),
         settingsManager.cleanup()
         instance = null
     }
-    private fun setupTodoListSpinner() {
+
+    private fun setupNoteCategorySpinner() {
+        val spinner = binding.noteCategorySpinner
+        noteCategorySpinnerAdapter = NoteCategorySpinnerAdapter(this, noteCategoryManager.getAllCategories())
+        spinner.adapter = noteCategorySpinnerAdapter
+
+        val currentListIndex = noteCategoryManager.getAllCategories().indexOfFirst { it.isSelected }.coerceAtLeast(0)
+        spinner.setSelection(currentListIndex)
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (noteCategorySpinnerAdapter.isNewItem(position)) {
+                    com.hsiun.markdowntodo.ui.dialog.NoteCategoryDialog(this@MainActivity).showCreateCategoryDialog { name ->
+                        val newCat = noteCategoryManager.createCategory(name)
+                        if (newCat != null) {
+                            switchNoteCategory(newCat.id)
+                        } else {
+                            android.widget.Toast.makeText(this@MainActivity, "创建失败，可能同名", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    // Reset selection to prevent stuck on New
+                    val resetIndex = noteCategoryManager.getAllCategories().indexOfFirst { it.isSelected }.coerceAtLeast(0)
+                    spinner.setSelection(resetIndex)
+                } else {
+                    val selectedCat = noteCategorySpinnerAdapter.getItem(position)
+                    selectedCat?.let { cat ->
+                        if (!cat.isSelected) {
+                            switchNoteCategory(cat.id)
+                        }
+                    }
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+    
+    private fun switchNoteCategory(id: String) {
+        if (noteCategoryManager.setCurrentCategory(id)) {
+            noteManager.loadAllNotes()
+            refreshNoteCategorySpinner()
+            android.widget.Toast.makeText(this, "已切换到分类", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun setupTodoListSpinner()
+        setupNoteCategorySpinner() {
         // 移除原来的 todoCountText，改用 Spinner
         val spinner = binding.todoListSpinner
 
