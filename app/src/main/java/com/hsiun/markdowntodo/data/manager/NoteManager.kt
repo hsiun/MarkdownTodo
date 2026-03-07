@@ -757,4 +757,33 @@ class NoteManager(private val context: Context) {
         }
     }
 
+
+    fun moveNoteToFolder(uuid: String, targetFolder: String): Boolean {
+        try {
+            val note = notes.find { it.uuid == uuid } ?: return false
+            val sourceFileName = noteFileMap[uuid] ?: return false
+            
+            // Determine source and target paths
+            val sourceDir = notesDir
+            val targetDir = if (targetFolder.isEmpty()) notesDir else File(notesDir, targetFolder)
+            
+            if (!targetDir.exists()) targetDir.mkdirs()
+            
+            val sourceFile = File(sourceDir, sourceFileName)
+            val targetFile = File(targetDir, sourceFileName)
+            
+            if (sourceFile.exists()) {
+                sourceFile.copyTo(targetFile, overwrite = true)
+                sourceFile.delete()
+                noteFileMap[uuid] = sourceFileName
+                Log.d(TAG, "Moved note to folder: $targetFolder")
+                return true
+            }
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Move note failed", e)
+            return false
+        }
+    }
+
 }

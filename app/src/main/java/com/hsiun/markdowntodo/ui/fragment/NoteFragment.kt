@@ -79,13 +79,50 @@ class NoteFragment : Fragment(), NoteManager.NoteChangeListener {
      * 设置左滑删除功能
      */
     private fun setupSwipeToDelete() {
-        val callback = NoteItemTouchHelperCallback(requireContext(), binding.recyclerView) { position ->
-            val note = adapter.getItemAtPosition(position)
-            note?.let {
-                val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
-                mainActivity?.showDeleteNoteConfirmationDialog(it)
+        val callback = NoteItemTouchHelperCallback(
+            requireContext(),
+            binding.recyclerView,
+            onDeleteClicked = { position ->
+                val note = adapter.getItemAtPosition(position)
+                note?.let {
+                    val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
+                    mainActivity?.showDeleteNoteConfirmationDialog(it)
+                }
+            },
+            onMoveClicked = { position ->
+                val note = adapter.getItemAtPosition(position)
+                note?.let { noteItem ->
+                    val mainActivity = activity as? com.hsiun.markdowntodo.ui.activity.MainActivity
+                    mainActivity?.let { ma ->
+                        val lists = ma.noteCategoryManager.getAllCategories()
+                        if (lists.size <= 1) {
+                            android.widget.Toast.makeText(requireContext(), "没有其他分类可移动", android.widget.Toast.LENGTH_SHORT).show()
+                            return@let
+                        }
+                        
+                        val currentCatId = ma.noteCategoryManager.getCurrentCategoryId()
+                        val targetLists = lists.filter { list -> list.id != currentCatId }
+                        val listNames = targetLists.map { list -> list.getDisplayText() }.toTypedArray()
+                        
+                        android.app.AlertDialog.Builder(requireContext())
+                            .setTitle("移动到分类")
+                            .setItems(listNames) { _, which ->
+                                val targetCat = targetLists[which]
+                                val success = ma.noteManager.moveNoteToFolder(noteItem.uuid, targetCat.folderName)
+                                if (success) {
+                                    // Reload notes
+                                    ma.noteManager.loadAllNotes()
+                                    ma.noteCategoryManager.updateCounts()
+                                    android.widget.Toast.makeText(requireContext(), "已移动到 ${targetCat.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(requireContext(), "移动失败", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .show()
+                    }
+                }
             }
-        }
+        )
         itemTouchHelper = androidx.recyclerview.widget.ItemTouchHelper(callback)
         itemTouchHelper.attachToRecyclerView(binding.recyclerView)
     }

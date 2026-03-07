@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity(),
     // 管理器实例
     lateinit var todoManager: TodoManager
     lateinit var noteManager: NoteManager
+    lateinit var noteCategoryManager: NoteCategoryManager
     lateinit var todoDialogManager: TodoDialogManager
     lateinit var noteDialogManager: NoteDialogManager
     lateinit var syncManager: SyncManager
@@ -233,6 +234,7 @@ class MainActivity : AppCompatActivity(),
 
         // 初始化NoteManager
         noteManager = NoteManager(this)
+        noteCategoryManager = NoteCategoryManager(this)
         noteManager.setNoteChangeListener(this)
 
         // 初始化对话框管理器

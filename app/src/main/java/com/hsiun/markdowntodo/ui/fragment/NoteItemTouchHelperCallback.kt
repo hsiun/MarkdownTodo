@@ -13,7 +13,8 @@ import com.hsiun.markdowntodo.R
 class NoteItemTouchHelperCallback(
     private val context: Context,
     private val recyclerView: RecyclerView,
-    private val onDeleteClicked: (Int) -> Unit
+    private val onDeleteClicked: (Int) -> Unit,
+    private val onMoveClicked: (Int) -> Unit
 ) : ItemTouchHelper.Callback() {
 
     private var openedViewHolder: RecyclerView.ViewHolder? = null
@@ -21,15 +22,18 @@ class NoteItemTouchHelperCallback(
     private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.apply {
         setTint(Color.parseColor("#FF3B30"))
     }
+    private val moveIcon = ContextCompat.getDrawable(context, R.drawable.ic_list)?.apply {
+        setTint(Color.parseColor("#FF9800")) // Orange
+    }
     private var isDeleteButtonClicked = false
+    private var isMoveButtonClicked = false
     private var isDragging = false
 
     private val buttonWidth: Float
-        get() = swipeThresholdLimit
+        get() = swipeThresholdLimit / 2f
 
     init {
-        // 笔记我们只提供删除按钮，总宽度设定为 70dp
-        swipeThresholdLimit = 70 * context.resources.displayMetrics.density
+        swipeThresholdLimit = 140 * context.resources.displayMetrics.density
 
         recyclerView.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
             override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
@@ -44,30 +48,44 @@ class NoteItemTouchHelperCallback(
                             rightBoundary,
                             itemView.bottom.toFloat()
                         )
+                        val moveRect = RectF(
+                            rightBoundary - swipeThresholdLimit,
+                            itemView.top.toFloat(),
+                            rightBoundary - buttonWidth,
+                            itemView.bottom.toFloat()
+                        )
                         
                         if (deleteRect.contains(e.x, e.y)) {
-                            // 点到了删除按钮
                             isDeleteButtonClicked = true
                             return true
+                        } else if (moveRect.contains(e.x, e.y)) {
+                            isMoveButtonClicked = true
+                            return true
                         } else {
-                            // 点到了其他地方，收回卡片
                             val oldView = openedViewHolder!!.itemView
                             openedViewHolder = null
                             oldView.animate().translationX(0f).setDuration(200).start()
-                            return true // 拦截本次触摸，防止误触进入详情
+                            return true
                         }
                     }
                 } else if (e.action == MotionEvent.ACTION_UP) {
                     val pos = openedViewHolder?.adapterPosition ?: RecyclerView.NO_POSITION
                     
-                    if (isDeleteButtonClicked) {
+                    if (isDeleteButtonClicked || isMoveButtonClicked) {
+                        val isDelete = isDeleteButtonClicked
                         isDeleteButtonClicked = false
+                        isMoveButtonClicked = false
+                        
                         val oldView = openedViewHolder?.itemView
                         openedViewHolder = null
                         oldView?.animate()?.translationX(0f)?.setDuration(200)?.start()
                         
                         if (pos != RecyclerView.NO_POSITION) {
-                            onDeleteClicked(pos)
+                            if (isDelete) {
+                                onDeleteClicked(pos)
+                            } else {
+                                onMoveClicked(pos)
+                            }
                         }
                         return true
                     }
@@ -76,15 +94,22 @@ class NoteItemTouchHelperCallback(
             }
 
             override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                if (e.action == MotionEvent.ACTION_UP && isDeleteButtonClicked) {
+                if (e.action == MotionEvent.ACTION_UP && (isDeleteButtonClicked || isMoveButtonClicked)) {
+                    val isDelete = isDeleteButtonClicked
                     isDeleteButtonClicked = false
+                    isMoveButtonClicked = false
+                    
                     val pos = openedViewHolder?.adapterPosition ?: RecyclerView.NO_POSITION
                     val oldView = openedViewHolder?.itemView
                     openedViewHolder = null
                     oldView?.animate()?.translationX(0f)?.setDuration(200)?.start()
                     
                     if (pos != RecyclerView.NO_POSITION) {
-                        onDeleteClicked(pos)
+                        if (isDelete) {
+                            onDeleteClicked(pos)
+                        } else {
+                            onMoveClicked(pos)
+                        }
                     }
                 }
             }
@@ -95,7 +120,7 @@ class NoteItemTouchHelperCallback(
         recyclerView: RecyclerView,
         viewHolder: RecyclerView.ViewHolder
     ): Int {
-        return makeMovementFlags(0, ItemTouchHelper.LEFT) // 只允许左滑
+        return makeMovementFlags(0, ItemTouchHelper.LEFT)
     }
 
     override fun onMove(
@@ -153,11 +178,21 @@ class NoteItemTouchHelperCallback(
 
             val currentTx = itemView.translationX
             if (currentTx < 0) {
-                // 绘制 Delete，仅在空白处绘制图标（移除背景）
                 deleteIcon?.let {
                     val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
                     val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
                     val iconLeft = itemView.right - buttonWidth + iconMargin
+                    val iconRight = iconLeft + it.intrinsicWidth
+                    val iconBottom = iconTop + it.intrinsicHeight
+
+                    it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
+                    it.draw(c)
+                }
+                
+                moveIcon?.let {
+                    val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
+                    val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
+                    val iconLeft = itemView.right - swipeThresholdLimit + iconMargin
                     val iconRight = iconLeft + it.intrinsicWidth
                     val iconBottom = iconTop + it.intrinsicHeight
 
