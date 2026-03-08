@@ -1163,6 +1163,7 @@ class SyncManager(
 
             // 2. 保存笔记数据
             val notes = noteManager.getAllNotes()
+            if (notes.isEmpty()) { Log.w(TAG, "Notes empty, skipping save to prevent data loss"); return }
             val notesDir = File(repoDir, DIR_NOTES)
             if (!notesDir.exists()) {
                 notesDir.mkdirs()
