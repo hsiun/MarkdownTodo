@@ -497,7 +497,7 @@ class NoteManager(private val context: Context) {
             } else {
                 Log.w(TAG, "noteFileMap中没有找到UUID映射: $uuid，尝试通过扫描文件查找")
                 // 如果noteFileMap中没有映射，尝试通过扫描文件查找
-                val allFiles = notesDir.listFiles { file ->
+                val allFiles = targetDir.listFiles { file ->
                     file.isFile && file.name.endsWith(".md", ignoreCase = true)
                 } ?: emptyArray()
 
