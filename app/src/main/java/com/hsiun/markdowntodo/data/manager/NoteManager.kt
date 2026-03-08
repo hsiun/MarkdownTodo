@@ -39,6 +39,15 @@ class NoteManager(private val context: Context) {
         this.categoryManager = categoryManager
     }
 
+    private fun getCurrentNotesDir(): java.io.File {
+        val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
+        val folderName = currentCat?.folderName?.takeIf { it.isNotEmpty() } ?: "默认笔记"
+        val dir = java.io.File(notesDir, folderName)
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+
 
     init {
         // 确保目录存在
@@ -188,7 +197,7 @@ class NoteManager(private val context: Context) {
                 val (note, originalFileName) = pair
 
                 // 检查原文件名是否已经存在且属于当前笔记
-                val originalFile = File(notesDir, originalFileName)
+                val originalFile = File(targetDir, originalFileName)
                 val shouldKeepOriginalName = if (originalFile.exists()) {
                     try {
                         val content = originalFile.readText()
@@ -226,8 +235,8 @@ class NoteManager(private val context: Context) {
                 val (oldFileName, newFileName) = fileNames
 
                 try {
-                    val oldFile = File(notesDir, oldFileName)
-                    val newFile = File(notesDir, newFileName)
+                    val oldFile = File(targetDir, oldFileName)
+                    val newFile = File(targetDir, newFileName)
 
                     // 如果新文件已经存在且属于当前笔记，不需要重命名
                     if (newFile.exists()) {
@@ -325,7 +334,7 @@ class NoteManager(private val context: Context) {
         }
 
         // 确保文件名唯一
-        while (usedFileNames.contains(fileName) || File(notesDir, fileName).exists()) {
+        while (usedFileNames.contains(fileName) || File(getCurrentNotesDir(), fileName).exists()) {
             fileName = if (counter == 1) {
                 "${baseName}_${uuidShort}.md"
             } else {
@@ -343,7 +352,7 @@ class NoteManager(private val context: Context) {
         // 首先检查是否已经有映射的文件名
         val existingFileName = noteFileMap[note.uuid]
         if (existingFileName != null) {
-            val existingFile = File(notesDir, existingFileName)
+            val existingFile = File(getCurrentNotesDir(), existingFileName)
             if (existingFile.exists()) {
                 // 验证文件内容是否匹配
                 try {
