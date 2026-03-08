@@ -1162,26 +1162,29 @@ class SyncManager(
             }
 
             // 2. 保存笔记数据 - 遍历所有分类保存，防止删除其他分类的笔记
-            val allCategories = noteCategoryManager.getAllCategories()
+            // 直接扫描 notesDir 下的所有子目录作为分类
+            val notesSourceDir = File(context.filesDir, "notes")
             var hasNotes = false
             
-            if (allCategories.isEmpty()) {
-                Log.w(TAG, "No categories found, skipping notes save");
+            if (!notesSourceDir.exists() || notesSourceDir.listFiles()?.isEmpty() == true) {
+                Log.w(TAG, "Notes source directory is empty or missing, skipping save");
             } else {
-                // 遍历所有分类目录，将所有文件复制/覆盖到 Git 目录
-                allCategories.forEach { category ->
-                    val folderName = if (category.folderName.isEmpty()) "默认笔记" else category.folderName
-                    val sourceDir = File(notesDir, folderName)
-                    
-                    if (sourceDir.exists() && sourceDir.isDirectory) {
-                        sourceDir.listFiles()?.forEach { file ->
-                            if (file.isFile && file.extension == "md") {
-                                val targetFile = File(notesDir, file.name)
-                                // 覆盖写入，确保最新
-                                file.copyTo(targetFile, overwrite = true)
-                                hasNotes = true
-                            }
-                        }
+                // 遍历所有分类目录
+                notesSourceDir.listFiles()?.filter { it.isDirectory }?.forEach { categoryDir ->
+                    categoryDir.listFiles()?.filter { it.isFile && it.extension == "md" }?.forEach { file ->
+                        val targetFile = File(notesDir, file.name)
+                        // 覆盖写入，确保最新
+                        file.copyTo(targetFile, overwrite = true)
+                        hasNotes = true
+                    }
+                }
+                
+                // 也检查根目录是否有遗留的笔记文件（旧版本兼容）
+                notesSourceDir.listFiles()?.filter { it.isFile && it.extension == "md" }?.forEach { file ->
+                    val targetFile = File(notesDir, file.name)
+                    if (!targetFile.exists() || file.lastModified() > targetFile.lastModified()) {
+                        file.copyTo(targetFile, overwrite = true)
+                        hasNotes = true
                     }
                 }
             }
