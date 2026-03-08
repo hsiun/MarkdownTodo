@@ -13,14 +13,24 @@ import com.hsiun.markdowntodo.data.model.NoteCategory
 class NoteCategorySpinnerAdapter(
     context: Context,
     categories: List<NoteCategory>
-) : ArrayAdapter<NoteCategory>(context, 0, categories) {
+) : ArrayAdapter<NoteCategory>(context, 0, categories.toMutableList()) {
 
     // 添加一个特殊项作为"新建列表"按钮
-    private val items = categories.toMutableList()
+    private var items = categories.toMutableList()
     
     // 标记最后一个位置是否是新建项
     fun isNewItem(position: Int): Boolean {
         return position == count - 1
+    }
+
+    override fun clear() {
+        super.clear()
+        items.clear()
+    }
+
+    override fun addAll(collection: Collection<NoteCategory>) {
+        super.addAll(collection)
+        items.addAll(collection)
     }
 
     override fun getCount(): Int {
