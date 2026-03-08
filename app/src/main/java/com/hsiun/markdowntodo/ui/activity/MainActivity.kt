@@ -241,6 +241,8 @@ class MainActivity : AppCompatActivity(),
         noteCategoryManager = NoteCategoryManager(this)
         noteManager.setCategoryManager(noteCategoryManager)
         noteManager.setNoteChangeListener(this)
+        // 显式调用一次 loadAllNotes()，因为现在 init 块里 categoryManager 还没初始化
+        noteManager.loadAllNotes()
 
         // 初始化对话框管理器
         todoDialogManager = TodoDialogManager(this)

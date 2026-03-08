@@ -793,7 +793,12 @@ class NoteManager(private val context: Context) {
             val sourceFileName = noteFileMap[uuid] ?: return false
             
             // Determine source and target paths
-            val sourceDir = notesDir
+            val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
+            val sourceDir = if (currentCat?.folderName?.isNotEmpty() == true) {
+                java.io.File(notesDir, currentCat.folderName)
+            } else {
+                notesDir
+            }
             val targetDir = if (targetFolder.isEmpty()) notesDir else File(notesDir, targetFolder)
             
             if (!targetDir.exists()) targetDir.mkdirs()
