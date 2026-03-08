@@ -1162,6 +1162,11 @@ class SyncManager(
             }
 
             // 2. 保存笔记数据 - 遍历所有分类保存，防止删除其他分类的笔记
+            val notesDir = File(repoDir, DIR_NOTES)
+            if (!notesDir.exists()) {
+                notesDir.mkdirs()
+            }
+            
             // 直接扫描 notesDir 下的所有子目录作为分类
             val notesSourceDir = File(context.filesDir, "notes")
             var hasNotes = false
