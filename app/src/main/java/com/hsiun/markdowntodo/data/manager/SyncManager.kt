@@ -1161,44 +1161,34 @@ class SyncManager(
                 saveTodosToFile(todos, listFile)
             }
 
-            // 2. 保存笔记数据
-            val notes = noteManager.getAllNotes()
-            if (notes.isEmpty()) { Log.w(TAG, "Notes empty, skipping save to prevent data loss"); return }
-            val notesDir = File(repoDir, DIR_NOTES)
-            if (!notesDir.exists()) {
-                notesDir.mkdirs()
-            }
-
-            // 清空笔记目录
-            notesDir.listFiles()?.forEach { it.delete() }
-
-            // 保存笔记 - 使用与 NoteManager 相同的逻辑确保文件名唯一
-            val usedFileNames = mutableSetOf<String>()
-            notes.forEach { note ->
-                // 生成唯一的文件名，与 NoteManager.getFileNameForNote() 逻辑一致
-                val safeName = note.getSafeFileName()
-                var fileName = "$safeName.md"
-                var counter = 1
-
-                val uuidShort = if (note.uuid.length >= 8) {
-                    note.uuid.substring(0, 8)
-                } else {
-                    note.uuid // 如果UUID长度不足8，使用完整UUID
-                }
-
-                // 确保文件名唯一
-                while (usedFileNames.contains(fileName)) {
-                    fileName = if (counter == 1) {
-                        "${safeName}_${uuidShort}.md"
-                    } else {
-                        "${safeName}_${uuidShort}_${counter}.md"
+            // 2. 保存笔记数据 - 遍历所有分类保存，防止删除其他分类的笔记
+            val allCategories = noteCategoryManager.getAllCategories()
+            var hasNotes = false
+            
+            if (allCategories.isEmpty()) {
+                Log.w(TAG, "No categories found, skipping notes save");
+            } else {
+                // 遍历所有分类目录，将所有文件复制/覆盖到 Git 目录
+                allCategories.forEach { category ->
+                    val folderName = if (category.folderName.isEmpty()) "默认笔记" else category.folderName
+                    val sourceDir = File(notesDir, folderName)
+                    
+                    if (sourceDir.exists() && sourceDir.isDirectory) {
+                        sourceDir.listFiles()?.forEach { file ->
+                            if (file.isFile && file.extension == "md") {
+                                val targetFile = File(notesDir, file.name)
+                                // 覆盖写入，确保最新
+                                file.copyTo(targetFile, overwrite = true)
+                                hasNotes = true
+                            }
+                        }
                     }
-                    counter++
                 }
-
-                usedFileNames.add(fileName)
-                val noteFile = File(notesDir, fileName)
-                noteFile.writeText(note.toMarkdown())
+            }
+            
+            if (!hasNotes) {
+                 Log.w(TAG, "No notes to save, skipping commit/push to prevent remote deletion");
+                 return
             }
 
             // 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
