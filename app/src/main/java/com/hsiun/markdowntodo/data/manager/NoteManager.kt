@@ -60,12 +60,30 @@ class NoteManager(private val context: Context) {
             notes.clear()
             noteFileMap.clear()
 
-            val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
-            val targetDir = if (currentCat?.folderName?.isNotEmpty() == true) {
-                java.io.File(notesDir, currentCat.folderName)
-            } else {
-                notesDir
+            // --- Migration: Move loose files from notesDir to '默认笔记' folder ---
+            val rootFiles = notesDir.listFiles() ?: emptyArray()
+            val looseNoteFiles = rootFiles.filter { it.isFile && it.name.endsWith(".md", ignoreCase = true) }
+            if (looseNoteFiles.isNotEmpty()) {
+                val defaultFolder = java.io.File(notesDir, "默认笔记")
+                if (!defaultFolder.exists()) defaultFolder.mkdirs()
+                
+                looseNoteFiles.forEach { file ->
+                    try {
+                        val targetFile = java.io.File(defaultFolder, file.name)
+                        file.copyTo(targetFile, overwrite = true)
+                        file.delete()
+                        Log.d(TAG, "迁移散落笔记到默认文件夹: ${file.name}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "迁移笔记失败: ${file.name}", e)
+                    }
+                }
             }
+            // --- End Migration ---
+
+
+            val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
+            val folderName = currentCat?.folderName?.takeIf { it.isNotEmpty() } ?: "默认笔记"
+            val targetDir = java.io.File(notesDir, folderName)
 
             if (!targetDir.exists() || !targetDir.isDirectory) {
                 Log.d(TAG, "笔记目录不存在，创建目录: ${targetDir.absolutePath}")
@@ -459,11 +477,8 @@ class NoteManager(private val context: Context) {
             notes.removeAt(noteIndex)
 
             val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
-            val targetDir = if (currentCat?.folderName?.isNotEmpty() == true) {
-                java.io.File(notesDir, currentCat.folderName)
-            } else {
-                notesDir
-            }
+            val folderName = currentCat?.folderName?.takeIf { it.isNotEmpty() } ?: "默认笔记"
+            val targetDir = java.io.File(notesDir, folderName)
 
             // 删除对应的文件
             val fileName = noteFileMap.remove(uuid)
@@ -547,11 +562,8 @@ class NoteManager(private val context: Context) {
     private fun saveNoteToFile(note: NoteItem) {
         try {
             val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
-            val targetDir = if (currentCat?.folderName?.isNotEmpty() == true) {
-                java.io.File(notesDir, currentCat.folderName)
-            } else {
-                notesDir
-            }
+            val folderName = currentCat?.folderName?.takeIf { it.isNotEmpty() } ?: "默认笔记"
+            val targetDir = java.io.File(notesDir, folderName)
             if (!targetDir.exists()) targetDir.mkdirs()
 
             val newFileName = getFileNameForNote(note)
@@ -794,12 +806,9 @@ class NoteManager(private val context: Context) {
             
             // Determine source and target paths
             val currentCat = if (::categoryManager.isInitialized) categoryManager.getCurrentCategory() else null
-            val sourceDir = if (currentCat?.folderName?.isNotEmpty() == true) {
-                java.io.File(notesDir, currentCat.folderName)
-            } else {
-                notesDir
-            }
-            val targetDir = if (targetFolder.isEmpty()) notesDir else File(notesDir, targetFolder)
+            val folderName = currentCat?.folderName?.takeIf { it.isNotEmpty() } ?: "默认笔记"
+            val sourceDir = java.io.File(notesDir, folderName)
+            val targetDir = File(notesDir, if (targetFolder.isEmpty()) "默认笔记" else targetFolder)
             
             if (!targetDir.exists()) targetDir.mkdirs()
             

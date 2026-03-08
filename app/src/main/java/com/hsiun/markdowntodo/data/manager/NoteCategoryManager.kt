@@ -54,10 +54,13 @@ class NoteCategoryManager(private val context: Context) {
                 val defaultCat = NoteCategory(
                     id = "default",
                     name = "默认笔记",
-                    folderName = "",
+                    folderName = "默认笔记",
                     isDefault = true,
                     isSelected = true
                 )
+                // Ensure default folder exists
+                val defaultFolder = File(notesDir, "默认笔记")
+                if (!defaultFolder.exists()) defaultFolder.mkdirs()
                 categories.add(0, defaultCat)
                 currentCategoryId = defaultCat.id
                 saveCategories()
@@ -72,7 +75,9 @@ class NoteCategoryManager(private val context: Context) {
             Log.e(TAG, "Failed to load categories", e)
             // Reset to default
             categories.clear()
-            categories.add(NoteCategory(id = "default", name = "默认笔记", folderName = "", isDefault = true, isSelected = true))
+            categories.add(NoteCategory(id = "default", name = "默认笔记", folderName = "默认笔记", isDefault = true, isSelected = true))
+            val defaultFolder = File(notesDir, "默认笔记")
+            if (!defaultFolder.exists()) defaultFolder.mkdirs()
             currentCategoryId = "default"
             saveCategories()
         }
@@ -153,7 +158,7 @@ class NoteCategoryManager(private val context: Context) {
     fun updateCounts() {
         // Count files in each folder
         categories.forEach { cat ->
-            val folder = if (cat.folderName.isEmpty()) notesDir else File(notesDir, cat.folderName)
+            val folder = File(notesDir, cat.folderName)
             val count = if (folder.exists() && folder.isDirectory) {
                 folder.listFiles()?.count { it.isFile && it.name.endsWith(".md") } ?: 0
             } else 0
