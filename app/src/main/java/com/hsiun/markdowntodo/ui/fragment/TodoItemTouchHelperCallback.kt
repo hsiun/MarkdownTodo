@@ -23,8 +23,8 @@ class TodoItemTouchHelperCallback(
     private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.apply {
         setTint(Color.parseColor("#FF3B30"))
     }
-    private val deleteBgPaint = Paint().apply { color = Color.parseColor("#FF3B30") }
-    private val moveBgPaint = Paint().apply { color = Color.parseColor("#FF9800") }
+    private val deleteBgPaint = Paint().apply { color = Color.WHITE }
+    private val moveBgPaint = Paint().apply { color = Color.WHITE }
     private val moveIcon = ContextCompat.getDrawable(context, R.drawable.ic_list)?.apply {
         setTint(Color.parseColor("#FF9800")) // Orange
     }
@@ -73,7 +73,7 @@ class TodoItemTouchHelperCallback(
                             val iconBottom = iconTop + it.intrinsicHeight
                             it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
                             // Tinting back to white for contrast against colored backgrounds
-                            it.setTint(Color.WHITE)
+                            it.setTint(Color.parseColor("#FF3B30"))
                             it.draw(c)
                         }
                         
@@ -86,7 +86,7 @@ class TodoItemTouchHelperCallback(
                             val iconBottom = iconTop + it.intrinsicHeight
                             it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
                             // Tinting back to white
-                            it.setTint(Color.WHITE)
+                            it.setTint(Color.parseColor("#FF3B30"))
                             it.draw(c)
                         }
                     }
