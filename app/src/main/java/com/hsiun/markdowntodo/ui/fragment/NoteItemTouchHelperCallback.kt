@@ -3,6 +3,7 @@ package com.hsiun.markdowntodo.ui.fragment
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.RectF
 import android.view.MotionEvent
 import androidx.core.content.ContextCompat
@@ -22,6 +23,8 @@ class NoteItemTouchHelperCallback(
     private val deleteIcon = ContextCompat.getDrawable(context, R.drawable.ic_delete)?.apply {
         setTint(Color.parseColor("#FF3B30"))
     }
+    private val deleteBgPaint = Paint().apply { color = Color.parseColor("#FF3B30") }
+    private val moveBgPaint = Paint().apply { color = Color.parseColor("#FF9800") }
     private val moveIcon = ContextCompat.getDrawable(context, R.drawable.ic_list)?.apply {
         setTint(Color.parseColor("#FF9800")) // Orange
     }
@@ -35,6 +38,60 @@ class NoteItemTouchHelperCallback(
     init {
         swipeThresholdLimit = 140 * context.resources.displayMetrics.density
 
+                recyclerView.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun onDraw(c: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+                super.onDraw(c, parent, state)
+                for (i in 0 until parent.childCount) {
+                    val itemView = parent.getChildAt(i)
+                    val currentTx = itemView.translationX
+                    if (currentTx < 0) {
+                        // Draw Delete Background
+                        c.drawRect(
+                            itemView.right - buttonWidth,
+                            itemView.top.toFloat(),
+                            itemView.right.toFloat(),
+                            itemView.bottom.toFloat(),
+                            deleteBgPaint
+                        )
+                        // Draw Move Background
+                        c.drawRect(
+                            itemView.right - swipeThresholdLimit,
+                            itemView.top.toFloat(),
+                            itemView.right - buttonWidth,
+                            itemView.bottom.toFloat(),
+                            moveBgPaint
+                        )
+
+                        // Draw Delete Icon
+                        deleteIcon?.let {
+                            val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
+                            val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
+                            val iconLeft = itemView.right - buttonWidth + iconMargin
+                            val iconRight = iconLeft + it.intrinsicWidth
+                            val iconBottom = iconTop + it.intrinsicHeight
+                            it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
+                            // Tinting back to white for contrast against colored backgrounds
+                            it.setTint(Color.WHITE)
+                            it.draw(c)
+                        }
+                        
+                        // Draw Move Icon
+                        moveIcon?.let {
+                            val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
+                            val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
+                            val iconLeft = itemView.right - swipeThresholdLimit + iconMargin
+                            val iconRight = iconLeft + it.intrinsicWidth
+                            val iconBottom = iconTop + it.intrinsicHeight
+                            it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
+                            // Tinting back to white
+                            it.setTint(Color.WHITE)
+                            it.draw(c)
+                        }
+                    }
+                }
+            }
+        })
+        
         recyclerView.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
             override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
                 if (e.action == MotionEvent.ACTION_DOWN) {
