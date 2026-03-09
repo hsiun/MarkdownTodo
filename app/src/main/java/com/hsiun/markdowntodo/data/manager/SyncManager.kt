@@ -927,50 +927,9 @@ class SyncManager(
                 todoManager.replaceAllTodos(updatedTodos)
             }
 
-            // 3. 加载笔记数据（镜像 Git 目录到本地 source 目录，保留分类结构）
-            val notesDir = File(repoDir, DIR_NOTES) // git_repo/notes
-            val notesSourceDir = File(context.filesDir, "notes") // local notes
-            Log.d(TAG, "loadDataFromGitToMemory: 笔记目录路径: ${notesDir.absolutePath}, 存在: ${notesDir.exists()}")
-            
-            if (notesDir.exists()) {
-                // 预检查 Git 仓库里有没有笔记（避免把本地合法的笔记清空）
-                val hasRemoteNotes = notesDir.walkTopDown().any { it.isFile && it.extension == "md" }
-                
-                if (hasRemoteNotes) {
-                    // Git 仓库有文件，我们清空本地并完全镜像 Git 仓库
-                    if (notesSourceDir.exists()) {
-                        notesSourceDir.deleteRecursively()
-                    }
-                    notesSourceDir.mkdirs()
-                    
-                    notesDir.listFiles()?.forEach { item ->
-                        if (item.isDirectory) {
-                            val targetCategoryDir = File(notesSourceDir, item.name)
-                            targetCategoryDir.mkdirs()
-                            item.listFiles()?.forEach { file ->
-                                if (file.isFile && file.extension == "md") {
-                                    val targetFile = File(targetCategoryDir, file.name)
-                                    file.copyTo(targetFile, overwrite = true)
-                                }
-                            }
-                        } else if (item.isFile && item.extension == "md") {
-                            // 为了兼容旧版本拉取下来的平铺文件，统一放入"默认笔记"
-                            val targetCategoryDir = File(notesSourceDir, "默认笔记")
-                            targetCategoryDir.mkdirs()
-                            val targetFile = File(targetCategoryDir, item.name)
-                            item.copyTo(targetFile, overwrite = true)
-                        }
-                    }
-                    Log.d(TAG, "loadDataFromGitToMemory: 已将 Git 仓库的笔记镜像到本地目录")
-                } else {
-                    Log.w(TAG, "loadDataFromGitToMemory: Git 仓库的 notes 目录虽然存在，但没有任何 md 文件！跳过覆盖本地")
-                }
-                
-                // 强制让 NoteManager 重新从硬盘加载当前的分类笔记，更新内存
-                noteManager.loadAllNotes()
-            } else {
-                Log.w(TAG, "loadDataFromGitToMemory: 笔记目录不存在: ${notesDir.absolutePath}")
-            }
+            // 3. 加载笔记数据
+            // 直接让 NoteManager 从硬盘（也就是 Git 镜像目录）重新加载当前分类的笔记即可
+            noteManager.loadAllNotes()
 
             // 4. 重新调度提醒
             todoManager.rescheduleAllReminders()
@@ -1167,44 +1126,8 @@ class SyncManager(
                 saveTodosToFile(todos, listFile)
             }
 
-            // 2. 保存笔记数据 - 遍历所有分类保存，防止删除其他分类的笔记
-            val notesSourceDir = File(context.filesDir, "notes")
-            var hasNotes = false
-            
-            // 预检查：如果本地笔记目录完全为空，则不进行保存，防止远程被清空
-            val hasAnyNotesLocally = notesSourceDir.exists() && notesSourceDir.walkTopDown().any { it.isFile && it.extension == "md" }
-            if (!hasAnyNotesLocally) {
-                Log.w(TAG, "Notes source directory has no markdown files, skipping save to prevent remote deletion");
-                return
-            }
-
-            val notesDir = File(repoDir, DIR_NOTES)
-            if (notesDir.exists()) {
-                // 清空Git仓库的notes目录，以便完全镜像本地（删除操作会被Git捕获）
-                notesDir.deleteRecursively()
-            }
-            notesDir.mkdirs()
-            
-            // 遍历所有分类目录，完全镜像到 Git 目录，保留分类文件夹结构
-            notesSourceDir.listFiles()?.filter { it.isDirectory }?.forEach { categoryDir ->
-                val targetCategoryDir = File(notesDir, categoryDir.name)
-                targetCategoryDir.mkdirs()
-                categoryDir.listFiles()?.filter { it.isFile && it.extension == "md" }?.forEach { file ->
-                    val targetFile = File(targetCategoryDir, file.name)
-                    file.copyTo(targetFile, overwrite = true)
-                    hasNotes = true
-                }
-            }
-            
-            // 处理根目录遗留的笔记文件（旧版本兼容），统一放到"默认笔记"
-            notesSourceDir.listFiles()?.filter { it.isFile && it.extension == "md" }?.forEach { file ->
-                val targetCategoryDir = File(notesDir, "默认笔记")
-                targetCategoryDir.mkdirs()
-                val targetFile = File(targetCategoryDir, file.name)
-                file.copyTo(targetFile, overwrite = true)
-                hasNotes = true
-            }
-
+            // 2. 笔记数据已经在 NoteManager 中直接实时保存到了 git_repo/notes 目录中
+            // 不需要在这里额外进行任何文件操作！
 
             // 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
             val imagesDir = File(repoDir, DIR_IMAGES)
