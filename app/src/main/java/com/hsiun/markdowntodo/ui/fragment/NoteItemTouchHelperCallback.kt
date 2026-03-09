@@ -44,20 +44,23 @@ class NoteItemTouchHelperCallback(
                 for (i in 0 until parent.childCount) {
                     val itemView = parent.getChildAt(i)
                     val currentTx = itemView.translationX
-                    if (currentTx < 0) {
-                        // Draw Delete Background
+                    if (currentTx < -10) {
+                        val itemRight = itemView.right + currentTx.toInt()
+                        
+                        val deleteLeft = itemRight - buttonWidth.toInt()
                         c.drawRect(
-                            itemView.right - buttonWidth,
+                            deleteLeft.toFloat(),
                             itemView.top.toFloat(),
-                            itemView.right.toFloat(),
+                            itemRight.toFloat(),
                             itemView.bottom.toFloat(),
                             deleteBgPaint
                         )
-                        // Draw Move Background
+                        
+                        val moveLeft = itemRight - swipeThresholdLimit.toInt()
                         c.drawRect(
-                            itemView.right - swipeThresholdLimit,
+                            moveLeft.toFloat(),
                             itemView.top.toFloat(),
-                            itemView.right - buttonWidth,
+                            deleteLeft.toFloat(),
                             itemView.bottom.toFloat(),
                             moveBgPaint
                         )
@@ -66,11 +69,10 @@ class NoteItemTouchHelperCallback(
                         deleteIcon?.let {
                             val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
                             val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
-                            val iconLeft = itemView.right - buttonWidth + iconMargin
+                            val iconLeft = deleteLeft + iconMargin
                             val iconRight = iconLeft + it.intrinsicWidth
                             val iconBottom = iconTop + it.intrinsicHeight
                             it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
-                            // Tinting back to white for contrast against colored backgrounds
                             it.setTint(Color.WHITE)
                             it.draw(c)
                         }
@@ -79,11 +81,10 @@ class NoteItemTouchHelperCallback(
                         moveIcon?.let {
                             val iconMargin = (buttonWidth - it.intrinsicWidth) / 2
                             val iconTop = itemView.top + (itemView.bottom - itemView.top - it.intrinsicHeight) / 2
-                            val iconLeft = itemView.right - swipeThresholdLimit + iconMargin
+                            val iconLeft = moveLeft + iconMargin
                             val iconRight = iconLeft + it.intrinsicWidth
                             val iconBottom = iconTop + it.intrinsicHeight
                             it.setBounds(iconLeft.toInt(), iconTop.toInt(), iconRight.toInt(), iconBottom.toInt())
-                            // Tinting back to white
                             it.setTint(Color.WHITE)
                             it.draw(c)
                         }
