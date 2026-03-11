@@ -298,26 +298,29 @@ class SyncManager(
             return
         }
 
-        // 1.5. 先保存当前数据到Git目录（包括删除操作），然后推送到远程
-        Log.d(TAG, "先保存当前数据到Git目录（包括删除操作）...")
-        syncListener?.onSyncProgress("正在保存本地更改...")
-        saveCurrentDataToGit()
-
-        // 1.6. 推送本地更改（包括删除操作）到远程，确保删除操作先完成
-        Log.d(TAG, "推送本地更改（包括删除操作）到远程...")
-        syncListener?.onSyncProgress("正在推送本地更改...")
-        pushToRemote()
-
-        // 1.6. 尝试列出远程文件（在拉取前）
-        val remoteFiles = listRemoteNoteFiles()
-        Log.d(TAG, "远程仓库中的笔记文件: ${remoteFiles.size} 个")
-        remoteFiles.forEach { file ->
-            Log.d(TAG, "远程文件: $file")
+        // 1.5. 先拉取远程更新（确保以服务器数据为准进行合并）
+        syncListener?.onSyncProgress("正在获取远程更新...")
+        val pullResult = pullWithGitMerge()
+        
+        // 处理拉取结果（合并冲突）
+        if (pullResult is SyncPullResult.Conflict) {
+            handleMergeConflict(pullResult)
+        } else if (pullResult is SyncPullResult.Error) {
+            syncListener?.onSyncError("拉取失败: ${pullResult.errorMessage}")
+            isSyncing = false
+            return
         }
 
-            // 2. 再拉取远程更新（让Git自动合并）
-        syncListener?.onSyncProgress("正在拉取远程更新...")
-        val pullResult = pullWithGitMerge()
+        // 1.6. 将合并后的最新数据加载到内存，然后再保存（确保内存与磁盘同步）
+        loadDataFromGitToMemory()
+        
+        Log.d(TAG, "正在保存合并后的数据...")
+        saveCurrentDataToGit()
+
+        // 1.7. 推送本地更改到远程
+        Log.d(TAG, "推送更改到远程...")
+        syncListener?.onSyncProgress("正在同步到云端...")
+        pushToRemote()
 
         // 2.5. 拉取后立即检查Git目录中的文件
         var localFilesAfterPull = listLocalFiles(notesDir, "拉取后本地")
@@ -369,27 +372,6 @@ class SyncManager(
             Log.d(TAG, "✓ 文件数量一致")
         }
         Log.d(TAG, "=====================================")
-
-        // 3. 处理拉取结果
-        when (pullResult) {
-            is SyncPullResult.Success -> {
-                syncListener?.onSyncProgress("拉取成功，Git自动合并完成")
-                loadDataFromGitToMemory()
-            }
-            is SyncPullResult.Conflict -> {
-                syncListener?.onSyncProgress("检测到冲突，正在处理...")
-                handleMergeConflict(pullResult)
-                loadDataFromGitToMemory()
-            }
-            is SyncPullResult.Error -> {
-                syncListener?.onSyncError("拉取失败: ${pullResult.errorMessage}")
-                isSyncing = false
-                return
-            }
-        }
-
-        // 4. 再次推送本地更改到远程（拉取后可能有新的本地更改需要推送）
-        pushToRemote()
 
         // 整次同步流程全部结束后再通知成功，保证图标与真实状态一致
         syncListener?.onSyncSuccess("同步成功")
@@ -562,7 +544,7 @@ class SyncManager(
                             handleNoteConflict(file, relativePath)
                         } else {
                             // 默认处理方式：使用本地版本
-                            resolveConflictWithLocalVersion(file)
+                            resolveConflictWithRemoteVersion(file)
                         }
                     } else {
                         Log.w(TAG, "冲突文件不存在: $relativePath")
@@ -617,7 +599,7 @@ class SyncManager(
                     Log.d(TAG, "已解决待办列表冲突: $relativePath")
                 } else {
                     // 无法解析冲突，使用本地版本
-                    resolveConflictWithLocalVersion(file)
+                    resolveConflictWithRemoteVersion(file)
                 }
             } else {
                 Log.d(TAG, "文件没有冲突标记，跳过: $relativePath")
@@ -625,7 +607,7 @@ class SyncManager(
         } catch (e: Exception) {
             Log.e(TAG, "处理待办列表冲突失败", e)
             // 失败时使用本地版本
-            resolveConflictWithLocalVersion(file)
+            resolveConflictWithRemoteVersion(file)
         }
     }
 
@@ -657,7 +639,7 @@ class SyncManager(
                     val ourTime = parseTodoUpdateTime(ourTodo)
                     val theirTime = parseTodoUpdateTime(existingTodo)
 
-                    if (ourTime >= theirTime) {
+                    if (ourTime > theirTime) {
                         mergedMap[ourTodo.uuid] = ourTodo
                     }
                 }
@@ -668,7 +650,7 @@ class SyncManager(
         } catch (e: Exception) {
             Log.e(TAG, "合并待办列表失败", e)
             // 合并失败，使用我们的版本
-            return ourContent
+            return theirContent
         }
     }
 
@@ -721,24 +703,24 @@ class SyncManager(
     /**
      * 使用本地版本解决冲突（简单策略）
      */
-    private fun resolveConflictWithLocalVersion(file: File) {
+    private fun resolveConflictWithRemoteVersion(file: File) {
         try {
             val content = file.readText()
 
-            // 如果有冲突标记，提取本地版本
+            // 如果有冲突标记，提取远程版本（他们的版本）
             if (content.contains("<<<<<<<") &&
                 content.contains("=======") &&
                 content.contains(">>>>>>>")) {
 
                 val conflictParts = parseGitConflict(content)
-                if (conflictParts.size >= 1) {
-                    val localContent = conflictParts[0]  // 本地版本在第一个
-                    file.writeText(localContent)
-                    Log.d(TAG, "已使用本地版本解决冲突: ${file.name}")
+                if (conflictParts.size >= 3) {
+                    val remoteContent = conflictParts[2]  // 远程版本在第三个
+                    file.writeText(remoteContent)
+                    Log.d(TAG, "已使用远程版本解决冲突: ${file.name}")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "使用本地版本解决冲突失败", e)
+            Log.e(TAG, "使用远程版本解决冲突失败", e)
         }
     }
 
@@ -851,11 +833,13 @@ class SyncManager(
                 mergedMap[id] = obj
             }
 
-            // 添加我们的项目（覆盖或新增）
+            // 添加我们的项目（仅当服务器上不存在时新增，存在时以服务器为准）
             for (i in 0 until ourArray.length()) {
                 val obj = ourArray.getJSONObject(i)
                 val id = obj.getString("id")
-                mergedMap[id] = obj
+                if (!mergedMap.containsKey(id)) {
+                    mergedMap[id] = obj
+                }
             }
 
             // 创建合并后的JSON数组
@@ -865,7 +849,7 @@ class SyncManager(
             mergedArray.toString()
         } catch (e: Exception) {
             Log.e(TAG, "合并元数据JSON失败", e)
-            ourJson // 失败时返回我们的版本
+            theirJson // 失败时返回远程版本
         }
     }
 
@@ -1530,7 +1514,7 @@ class SyncManager(
                     Log.d(TAG, "已解决笔记冲突: $relativePath")
                 } else {
                     // 无法解析冲突，使用本地版本
-                    resolveConflictWithLocalVersion(file)
+                    resolveConflictWithRemoteVersion(file)
                 }
             } else {
                 Log.d(TAG, "文件没有冲突标记，跳过: $relativePath")
@@ -1538,7 +1522,7 @@ class SyncManager(
         } catch (e: Exception) {
             Log.e(TAG, "处理笔记冲突失败", e)
             // 失败时使用本地版本
-            resolveConflictWithLocalVersion(file)
+            resolveConflictWithRemoteVersion(file)
         }
     }
 
@@ -1553,18 +1537,18 @@ class SyncManager(
             val theirNote = NoteItem.Companion.fromMarkdown(theirContent)
 
             if (ourNote == null && theirNote == null) {
-                return ourContent
+                return theirContent
             } else if (ourNote == null) {
                 return theirContent
             } else if (theirNote == null) {
-                return ourContent
+                return theirContent
             }
 
             // 比较更新时间，保留最新的
             val ourTime = parseNoteUpdateTime(ourNote.updatedAt)
             val theirTime = parseNoteUpdateTime(theirNote.updatedAt)
 
-            return if (ourTime >= theirTime) {
+            return if (ourTime > theirTime) {
                 // 使用我们的版本，但要确保UUID正确
                 ourContent
             } else {
@@ -1599,7 +1583,7 @@ class SyncManager(
             val ourTime = parseNoteUpdateTime(ourNote.updatedAt)
             val theirTime = parseNoteUpdateTime(theirNote.updatedAt)
 
-            return if (ourTime >= theirTime) ourContent else theirContent
+            return if (ourTime > theirTime) ourContent else theirContent
         } catch (e: Exception) {
             Log.e(TAG, "合并笔记失败", e)
             // 合并失败，使用我们的版本
