@@ -549,9 +549,6 @@ class TodoManager(private val context: Context) {
 
         todoChangeListener?.onTodosChanged(newTodos)
         Log.d(TAG, "已替换所有待办: ${todos.size} 条，已重新调度提醒")
-
-        // 重要：确保UI正确更新
-        loadCurrentListTodos()  // 重新加载以确保数据一致
     }
 
     fun getActiveTodosCount(): Int {

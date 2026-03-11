@@ -717,10 +717,8 @@ class MainActivity : AppCompatActivity(),
             Log.d("MainActivity", message)
 
             // 重新加载数据
-            // 注意：笔记数据已经在同步流程中通过 replaceAllNotes 更新了，不需要再次调用 loadAllNotes
-            // loadAllNotes 会从本地目录读取，可能导致只读取到一个文件的问题
-            todoManager.loadCurrentListTodos()
-            // noteManager.loadAllNotes() // 已移除，因为同步流程中已经通过 replaceAllNotes 更新了笔记
+            // 注意：待办和笔记数据已经在同步流程中（SyncManager.loadDataFromGitToMemory）通过 replaceAllTodos 和 loadAllNotes 更新了，
+            // 这里不需要再次调用 loadCurrentListTodos()，否则会导致二次刷新和可能的页面闪烁。
             updatePageCounts()
         }
     }
@@ -739,9 +737,6 @@ class MainActivity : AppCompatActivity(),
                 Toast.makeText(this, "检测到同步冲突，已自动处理", Toast.LENGTH_LONG).show()
 
                 // 重新加载数据
-                // 注意：笔记数据已经在同步流程中通过 replaceAllNotes 更新了，不需要再次调用 loadAllNotes
-                todoManager.loadCurrentListTodos()
-                // noteManager.loadAllNotes() // 已移除，因为同步流程中已经通过 replaceAllNotes 更新了笔记
                 updatePageCounts()
             } else {
                 updateSyncIndicator("同步失败", Color.parseColor("#F44336"))
