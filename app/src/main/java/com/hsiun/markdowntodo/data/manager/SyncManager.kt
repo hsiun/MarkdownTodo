@@ -1113,17 +1113,14 @@ class SyncManager(
             val metadataFile = File(todoListsDir, FILE_METADATA)
             saveTodoListsMetadata(todoLists, metadataFile)
 
-            // 保存每个列表的待办事项
-            todoLists.forEach { list ->
+            // 1.5. 保存当前选中的待办列表（确保内存中的最新修改已刷入磁盘）
+            // 注意：其他未选中的列表文件已经在磁盘上是最新状态了，不需要重复读写（防止读取失败导致文件被覆写为空）
+            val currentList = todoLists.find { it.isSelected }
+            currentList?.let { list ->
                 val listFile = File(todoListsDir, list.fileName)
-                val todos = if (list.isSelected) {
-                    todoManager.getAllTodos()
-                } else {
-                    // 对于非当前列表，从本地文件读取
-                    val localFile = todoListManager.getTodoFileForList(list.id)
-                    readTodosFromFile(localFile)
-                }
+                val todos = todoManager.getAllTodos()
                 saveTodosToFile(todos, listFile)
+                Log.d(TAG, "同步前：已保存当前列表 ${list.name} 到 Git 目录")
             }
 
             // 2. 笔记数据已经在 NoteManager 中直接实时保存到了 git_repo/notes 目录中
