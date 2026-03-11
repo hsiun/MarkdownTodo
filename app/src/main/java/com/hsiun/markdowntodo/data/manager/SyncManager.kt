@@ -298,10 +298,14 @@ class SyncManager(
             return
         }
 
-        // 1.5. 先拉取远程更新（确保以服务器数据为准进行合并）
+        // 1.5. 获取远程状态（分析用）
+        val remoteFiles = listRemoteNoteFiles()
+        Log.d(TAG, "远程仓库中的笔记文件: ${remoteFiles.size} 个")
+
+        // 1.6. 先拉取远程更新（确保以服务器数据为准进行合并）
         syncListener?.onSyncProgress("正在获取远程更新...")
         val pullResult = pullWithGitMerge()
-        
+
         // 处理拉取结果（合并冲突）
         if (pullResult is SyncPullResult.Conflict) {
             handleMergeConflict(pullResult)
@@ -311,17 +315,16 @@ class SyncManager(
             return
         }
 
-        // 1.6. 将合并后的最新数据加载到内存，然后再保存（确保内存与磁盘同步）
+        // 1.7. 将合并后的最新数据加载到内存，然后再保存（确保内存与磁盘同步）
         loadDataFromGitToMemory()
-        
+
         Log.d(TAG, "正在保存合并后的数据...")
         saveCurrentDataToGit()
 
-        // 1.7. 推送本地更改到远程
+        // 1.8. 推送本地合并后的更改到远程
         Log.d(TAG, "推送更改到远程...")
         syncListener?.onSyncProgress("正在同步到云端...")
         pushToRemote()
-
         // 2.5. 拉取后立即检查Git目录中的文件
         var localFilesAfterPull = listLocalFiles(notesDir, "拉取后本地")
 
@@ -1097,514 +1100,30 @@ class SyncManager(
             val metadataFile = File(todoListsDir, FILE_METADATA)
             saveTodoListsMetadata(todoLists, metadataFile)
 
-            // 1.5. 保存当前选中的待办列表（确保内存中的最新修改已刷入磁盘）
-            // 注意：其他未选中的列表文件已经在磁盘上是最新状态了，不需要重复读写（防止读取失败导致文件被覆写为空）
-            val currentList = todoLists.find { it.isSelected }
-            currentList?.let { list ->
-                val listFile = File(todoListsDir, list.fileName)
-                val todos = todoManager.getAllTodos()
-                saveTodosToFile(todos, listFile)
-                Log.d(TAG, "同步前：已保存当前列表 ${list.name} 到 Git 目录")
-            }
+        // 1.5. 获取远程状态（分析用）
+        val remoteFiles = listRemoteNoteFiles()
+        Log.d(TAG, "远程仓库中的笔记文件: ${remoteFiles.size} 个")
 
-            // 2. 笔记数据已经在 NoteManager 中直接实时保存到了 git_repo/notes 目录中
-            // 不需要在这里额外进行任何文件操作！
+        // 1.6. 先拉取远程更新（确保以服务器数据为准进行合并）
+        syncListener?.onSyncProgress("正在获取远程更新...")
+        val pullResult = pullWithGitMerge()
 
-            // 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
-            val imagesDir = File(repoDir, DIR_IMAGES)
-            if (!imagesDir.exists()) {
-                imagesDir.mkdirs()
-                Log.d(TAG, "创建 images 目录: ${imagesDir.absolutePath}")
-            }
-
-            // 列出 images 目录中的文件，用于调试
-            val imageFiles = imagesDir.listFiles()
-            if (imageFiles != null && imageFiles.isNotEmpty()) {
-                Log.d(TAG, "images 目录中有 ${imageFiles.size} 个文件:")
-                imageFiles.forEach { file ->
-                    Log.d(TAG, "  - ${file.name} (${file.length()} bytes)")
-                }
-            } else {
-                Log.d(TAG, "images 目录为空或不存在")
-            }
-
-            Log.d(TAG, "当前应用数据已保存到Git目录")
-        } catch (e: Exception) {
-            Log.e(TAG, "保存应用数据到Git目录失败", e)
-        }
-    }
-
-    /**
-     * 删除笔记（从Git目录）- 同步版本，等待删除完成
-     */
-    suspend fun deleteNoteFromGitSync(note: NoteItem): Boolean {
-        return suspendCoroutine { continuation ->
-            if (!::gitManager.isInitialized) {
-                Log.w(TAG, "GitManager未初始化，无法删除Git中的笔记")
-                continuation.resume(false)
-                return@suspendCoroutine
-            }
-
-            syncScope.launch {
-                try {
-                    Log.d(TAG, "开始删除Git中的笔记: UUID=${note.uuid}, Title=${note.title}")
-
-                    // 先获取所有可能的文件名
-                    val noteDir = File(context.filesDir, "$GIT_REPO_DIR/$DIR_NOTES")
-                    if (!noteDir.exists()) {
-                        Log.w(TAG, "笔记目录不存在: ${noteDir.absolutePath}")
-                        continuation.resume(false)
-                        return@launch
-                    }
-
-                    val noteFiles = noteDir.listFiles { file ->
-                        file.isFile && file.name.endsWith(".md", ignoreCase = true)
-                    } ?: emptyArray()
-
-                    Log.d(TAG, "扫描到 ${noteFiles.size} 个笔记文件，查找UUID=${note.uuid}")
-
-                    var fileNameToDelete = ""
-                    for (file in noteFiles) {
-                        try {
-                            val content = file.readText()
-                            val fileNote = NoteItem.Companion.fromMarkdown(content)
-                            if (fileNote?.uuid == note.uuid) {
-                                fileNameToDelete = file.name
-                                Log.d(TAG, "找到要删除的文件: $fileNameToDelete")
-                                break
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "解析文件失败，跳过: ${file.name}", e)
-                            // 忽略解析失败的文件
-                        }
-                    }
-
-                    if (fileNameToDelete.isEmpty()) {
-                        // 如果找不到，尝试通过UUID查找
-                        for (file in noteFiles) {
-                            try {
-                                val content = file.readText()
-                                val fileNote = NoteItem.Companion.fromMarkdown(content)
-                                if (fileNote?.uuid == note.uuid) {
-                                    fileNameToDelete = file.name
-                                    Log.d(TAG, "通过UUID找到文件: $fileNameToDelete")
-                                    break
-                                }
-                            } catch (e: Exception) {
-                                // 忽略
-                            }
-                        }
-                    }
-
-                    if (fileNameToDelete.isNotEmpty()) {
-                        Log.d(TAG, "调用GitManager删除文件: $DIR_NOTES/$fileNameToDelete")
-
-                        // 先确保本地文件已删除（如果还存在）
-                        val localFile = File(noteDir, fileNameToDelete)
-                        if (localFile.exists()) {
-                            val localDeleted = localFile.delete()
-                            Log.d(TAG, "删除本地文件: $fileNameToDelete, 结果: $localDeleted")
-                        }
-
-                        gitManager.removeFile(
-                            filePattern = "$DIR_NOTES/$fileNameToDelete",
-                            commitMessage = "删除笔记: ${note.title}",
-                            onSuccess = {
-                                Log.d(TAG, "Git删除笔记成功: $fileNameToDelete")
-                                syncListener?.onSyncStatusChanged("删除同步成功")
-                                continuation.resume(true)
-                            },
-                            onError = { error ->
-                                Log.e(TAG, "Git删除笔记失败: $error")
-                                syncListener?.onSyncError("删除同步失败: $error")
-                                continuation.resume(false)
-                            }
-                        )
-                    } else {
-                        Log.w(TAG, "未找到要删除的笔记文件: UUID=${note.uuid}, Title=${note.title}")
-                        // 如果找不到文件，可能已经被删除了，返回true
-                        continuation.resume(true)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "删除笔记同步异常", e)
-                    syncListener?.onSyncError("删除同步异常: ${e.message}")
-                    continuation.resume(false)
-                }
-            }
-        }
-    }
-
-    /**
-     * 删除笔记（从Git目录）- 异步版本（保持向后兼容）
-     */
-    fun deleteNoteFromGit(note: NoteItem) {
-        syncScope.launch {
-            val success = deleteNoteFromGitSync(note)
-            if (!success) {
-                Log.w(TAG, "Git删除失败，但本地已删除，下次同步时可能恢复")
-            }
-        }
-    }
-
-    /**
-     * 清理资源
-     */
-    fun cleanup() {
-        syncScope.cancel()
-        if (::gitManager.isInitialized) {
-            gitManager.cleanup()
-        }
-    }
-
-    // ============= 辅助方法 =============
-
-    /**
-     * 规范化待办列表元数据 JSON。
-     *
-     * 目标：保证返回值永远是一个“单一、合法”的 JSON Array 字符串（形如 `[...]`）。
-     *
-     * 背景：在 Git 冲突解析/合并失败时，metadata.json 可能出现类似 `[][{...}]` 的内容，
-     * 这是两个 JSON 数组被字符串拼接后的非法格式，直接 JSONArray(...) 会解析失败。
-     */
-    private fun normalizeMetadataJson(raw: String): String {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return "[]"
-
-        // 1) 已经是合法 JSON array，直接返回
-        try {
-            JSONArray(trimmed)
-            return trimmed
-        } catch (_: Exception) {
-            // ignore
+        // 处理拉取结果（合并冲突）
+        if (pullResult is SyncPullResult.Conflict) {
+            handleMergeConflict(pullResult)
+        } else if (pullResult is SyncPullResult.Error) {
+            syncListener?.onSyncError("拉取失败: ${pullResult.errorMessage}")
+            isSyncing = false
+            return
         }
 
-        // 2) 尝试从内容中提取出一个或多个 JSON array 片段并合并
-        return try {
-            val arrayRegex = Regex("\\[[\\s\\S]*?]", RegexOption.MULTILINE)
-            val arrays = arrayRegex.findAll(trimmed)
-                .mapNotNull { match ->
-                    val candidate = match.value.trim()
-                    try {
-                        JSONArray(candidate)
-                        candidate
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-                .toList()
+        // 1.7. 将合并后的最新数据加载到内存，然后再保存（确保内存与磁盘同步）
+        loadDataFromGitToMemory()
 
-            when (arrays.size) {
-                0 -> "[]"
-                1 -> arrays[0]
-                else -> {
-                    // 多段数组（如 [] + [...]），按 id 合并
-                    var merged = arrays[0]
-                    for (i in 1 until arrays.size) {
-                        merged = mergeMetadataJson(merged, arrays[i])
-                    }
-                    merged
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "规范化 metadata.json 失败", e)
-            "[]"
-        }
-    }
+        Log.d(TAG, "正在保存合并后的数据...")
+        saveCurrentDataToGit()
 
-    /**
-     * 读取待办列表元数据
-     */
-    private fun readTodoListsMetadata(file: File): List<TodoList> {
-        return try {
-            if (!file.exists()) {
-                return emptyList()
-            }
-
-            val json = normalizeMetadataJson(file.readText())
-            val jsonArray = JSONArray(json)
-            val result = mutableListOf<TodoList>()
-
-            for (i in 0 until jsonArray.length()) {
-                val jsonObject = jsonArray.getJSONObject(i)
-                val list = TodoList(
-                    id = jsonObject.getString("id"),
-                    name = jsonObject.getString("name"),
-                    fileName = jsonObject.getString("fileName"),
-                    todoCount = jsonObject.getInt("todoCount"),
-                    activeCount = jsonObject.getInt("activeCount"),
-                    createdAt = jsonObject.getString("createdAt"),
-                    isDefault = jsonObject.getBoolean("isDefault"),
-                    isSelected = jsonObject.getBoolean("isSelected")
-                )
-                result.add(list)
-            }
-
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "读取待办列表元数据失败", e)
-            emptyList()
-        }
-    }
-
-    /**
-     * 保存待办列表元数据
-     */
-    private fun saveTodoListsMetadata(todoLists: List<TodoList>, file: File) {
-        try {
-            val jsonArray = JSONArray()
-
-            todoLists.forEach { list ->
-                val jsonObject = JSONObject().apply {
-                    put("id", list.id)
-                    put("name", list.name)
-                    put("fileName", list.fileName)
-                    put("todoCount", list.todoCount)
-                    put("activeCount", list.activeCount)
-                    put("createdAt", list.createdAt)
-                    put("isDefault", list.isDefault)
-                    put("isSelected", list.isSelected)
-                }
-                jsonArray.put(jsonObject)
-            }
-
-            file.writeText(jsonArray.toString())
-        } catch (e: Exception) {
-            Log.e(TAG, "保存待办列表元数据失败", e)
-            throw e
-        }
-    }
-
-    /**
-     * 从文件读取待办事项
-     */
-    private fun readTodosFromFile(file: File): List<TodoItem> {
-        return if (file.exists() && file.length() > 0) {
-            try {
-                val lines = file.readLines()
-                if (lines.size > 2) {
-                    lines.drop(2)
-                        .filter { it.isNotBlank() }
-                        .mapNotNull { TodoItem.Companion.fromMarkdownLine(it) }
-                        .toList()
-                } else {
-                    emptyList()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "读取待办文件失败", e)
-                emptyList()
-            }
-        } else {
-            emptyList()
-        }
-    }
-
-    /**
-     * 从目录读取笔记
-     */
-    private fun readNotesFromDirectory(directory: File): List<NoteItem> {
-        return try {
-            Log.d(TAG, "readNotesFromDirectory: 读取目录: ${directory.absolutePath}")
-
-            if (!directory.exists() || !directory.isDirectory) {
-                Log.w(TAG, "readNotesFromDirectory: 目录不存在或不是目录: ${directory.absolutePath}")
-                return emptyList()
-            }
-
-            // 列出目录中的所有文件（用于调试）
-            val allFiles = directory.listFiles() ?: emptyArray()
-            Log.d(TAG, "readNotesFromDirectory: 目录中的所有文件数量: ${allFiles.size}")
-            allFiles.forEach { file ->
-                Log.d(TAG, "readNotesFromDirectory: 目录中的文件: ${file.name}, 是文件: ${file.isFile}, 是目录: ${file.isDirectory}")
-            }
-
-            // 手动过滤.md文件，确保读取所有文件
-            val noteFiles = allFiles.filter { file ->
-                file.isFile && file.name.endsWith(".md", ignoreCase = true)
-            }
-
-            Log.d(TAG, "readNotesFromDirectory: 找到 ${noteFiles.size} 个笔记文件")
-            noteFiles.forEach { file ->
-                Log.d(TAG, "readNotesFromDirectory: 笔记文件: ${file.name}, 大小: ${file.length()} 字节, 路径: ${file.absolutePath}")
-            }
-
-            val notes = mutableListOf<NoteItem>()
-            val uuidSet = mutableSetOf<String>()
-            var successCount = 0
-            var failCount = 0
-
-            noteFiles.forEach { file ->
-                try {
-                    val content = file.readText()
-                    val note = NoteItem.Companion.fromMarkdown(content)
-                    if (note != null) {
-                        // 检查重复UUID
-                        if (uuidSet.contains(note.uuid)) {
-                            Log.w(TAG, "readNotesFromDirectory: 发现重复UUID ${note.uuid} 在文件 ${file.name}，跳过")
-                        } else {
-                            uuidSet.add(note.uuid)
-                            notes.add(note)
-                            successCount++
-                            Log.d(TAG, "readNotesFromDirectory: 成功加载笔记 ${file.name}, UUID=${note.uuid}, 标题=${note.title}")
-                        }
-                    } else {
-                        Log.w(TAG, "readNotesFromDirectory: 文件解析返回null: ${file.name}")
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "readNotesFromDirectory: 读取笔记文件失败: ${file.name}", e)
-                    failCount++
-                }
-            }
-
-            Log.d(TAG, "readNotesFromDirectory: 成功=$successCount, 失败=$failCount, 最终笔记数=${notes.size}")
-            val sortedNotes = notes.sortedBy { it.uuid }  // 返回排序后的列表
-            Log.d(TAG, "readNotesFromDirectory: 返回排序后的笔记数量: ${sortedNotes.size}")
-            sortedNotes.forEachIndexed { index, note ->
-                Log.d(TAG, "readNotesFromDirectory: 返回笔记 $index: UUID=${note.uuid}, 标题=${note.title}")
-            }
-            sortedNotes
-        } catch (e: Exception) {
-            Log.e(TAG, "读取笔记目录失败", e)
-            emptyList()
-        }
-    }
-
-    /**
-     * 保存待办事项到文件
-     */
-    private fun saveTodosToFile(todos: List<TodoItem>, file: File) {
-        try {
-            file.bufferedWriter().use { writer ->
-                writer.write("# 待办事项\n\n")
-                todos.forEach { todo ->
-                    writer.write("${todo.toMarkdownLine()}\n")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "保存待办文件失败", e)
-            throw e
-        }
-    }
-    /**
-     * 处理笔记冲突
-     */
-    private fun handleNoteConflict(file: File, relativePath: String) {
-        try {
-            val content = file.readText()
-
-            // 检查是否有Git冲突标记
-            if (content.contains("<<<<<<<") &&
-                content.contains("=======") &&
-                content.contains(">>>>>>>")) {
-
-                Log.d(TAG, "检测到笔记冲突，正在解析...")
-
-                // 解析冲突内容
-                val conflictParts = parseGitConflict(content)
-                if (conflictParts.size >= 3) {
-                    val ourContent = conflictParts[0]  // 我们的版本
-                    val theirContent = conflictParts[2] // 他们的版本
-
-                    // 按UUID和更新时间合并笔记
-                    val mergedContent = mergeNotesByUuidAndTime(ourContent, theirContent)
-
-                    // 写回文件
-                    file.writeText(mergedContent)
-
-                    Log.d(TAG, "已解决笔记冲突: $relativePath")
-                } else {
-                    // 无法解析冲突，使用本地版本
-                    resolveConflictWithRemoteVersion(file)
-                }
-            } else {
-                Log.d(TAG, "文件没有冲突标记，跳过: $relativePath")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "处理笔记冲突失败", e)
-            // 失败时使用本地版本
-            resolveConflictWithRemoteVersion(file)
-        }
-    }
-
-    /**
-     * 合并笔记（按UUID和更新时间）
-     */
-    private fun mergeNotesByUuidAndTime(ourContent: String, theirContent: String): String {
-        try {
-            // 解析我们的笔记
-            val ourNote = NoteItem.Companion.fromMarkdown(ourContent)
-            // 解析他们的笔记
-            val theirNote = NoteItem.Companion.fromMarkdown(theirContent)
-
-            if (ourNote == null && theirNote == null) {
-                return theirContent
-            } else if (ourNote == null) {
-                return theirContent
-            } else if (theirNote == null) {
-                return theirContent
-            }
-
-            // 比较更新时间，保留最新的
-            val ourTime = parseNoteUpdateTime(ourNote.updatedAt)
-            val theirTime = parseNoteUpdateTime(theirNote.updatedAt)
-
-            return if (ourTime > theirTime) {
-                // 使用我们的版本，但要确保UUID正确
-                ourContent
-            } else {
-                // 使用他们的版本
-                theirContent
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "合并笔记失败", e)
-            // 合并失败，使用我们的版本
-            return ourContent
-        }
-    }
-    /**
-     * 合并笔记（按更新时间）
-     */
-    private fun mergeNotesByUpdateTime(ourContent: String, theirContent: String): String {
-        try {
-            // 解析我们的笔记
-            val ourNote = NoteItem.Companion.fromMarkdown(ourContent)
-            // 解析他们的笔记
-            val theirNote = NoteItem.Companion.fromMarkdown(theirContent)
-
-            if (ourNote == null && theirNote == null) {
-                return ourContent
-            } else if (ourNote == null) {
-                return theirContent
-            } else if (theirNote == null) {
-                return ourContent
-            }
-
-            // 比较更新时间，保留最新的
-            val ourTime = parseNoteUpdateTime(ourNote.updatedAt)
-            val theirTime = parseNoteUpdateTime(theirNote.updatedAt)
-
-            return if (ourTime > theirTime) ourContent else theirContent
-        } catch (e: Exception) {
-            Log.e(TAG, "合并笔记失败", e)
-            // 合并失败，使用我们的版本
-            return ourContent
-        }
-    }
-
-    /**
-     * 解析笔记更新时间
-     */
-
-
-
-    // ============= 数据类 =============
-
-    /**
-     * 拉取结果封装
-     */
-    private sealed class SyncPullResult {
-        data class Success(val result: PullResult) : SyncPullResult()
-        data class Conflict(val conflictFiles: List<String>, val mergeResult: MergeResult?) : SyncPullResult()
-        data class Error(val errorMessage: String) : SyncPullResult()
-    }
-}
+        // 1.8. 推送本地合并后的更改到远程
+        Log.d(TAG, "推送更改到远程...")
+        syncListener?.onSyncProgress("正在同步到云端...")
+        pushToRemote()
