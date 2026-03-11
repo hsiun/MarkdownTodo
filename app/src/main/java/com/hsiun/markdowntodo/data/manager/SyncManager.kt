@@ -1110,7 +1110,81 @@ class SyncManager(
             // 2. 笔记数据已经在 NoteManager 中直接实时保存到了 git_repo/notes 目录中
             // 不需要在这里额外进行任何文件操作！
 
-            // 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
+                    // 2.5. 拉取后立即检查Git目录中的文件
+        var localFilesAfterPull = listLocalFiles(notesDir, "拉取后本地")
+
+        // 对比分析
+        Log.d(TAG, "========== 文件对比分析 ==========")
+        Log.d(TAG, "远程文件数量: ${remoteFiles.size}")
+        Log.d(TAG, "拉取前本地文件数量: ${localFilesBeforePull.size}")
+        Log.d(TAG, "拉取后本地文件数量: ${localFilesAfterPull.size}")
+
+        // 找出差异（remoteFiles现在只包含文件名，不包含路径）
+        val missingInLocal = remoteFiles.filter { fileName ->
+            !localFilesAfterPull.contains(fileName)
+        }
+        val extraInLocal = localFilesAfterPull.filter { fileName ->
+            !remoteFiles.contains(fileName)
+        }
+
+        if (missingInLocal.isNotEmpty()) {
+            Log.w(TAG, "本地缺失的文件 (${missingInLocal.size} 个): ${missingInLocal.joinToString(", ")}")
+
+            // 如果拉取后文件数量不对，尝试强制checkout
+            if (pullResult is SyncPullResult.Success && missingInLocal.isNotEmpty()) {
+                Log.w(TAG, "检测到文件缺失，尝试强制checkout...")
+                try {
+                    forceCheckoutFiles()
+                    // 重新检查文件
+                    localFilesAfterPull = listLocalFiles(notesDir, "强制checkout后本地")
+                    Log.d(TAG, "强制checkout后本地文件数量: ${localFilesAfterPull.size}")
+
+                    // 再次检查缺失的文件
+                    val stillMissing = remoteFiles.filter { fileName ->
+                        !localFilesAfterPull.contains(fileName)
+                    }
+                    if (stillMissing.isNotEmpty()) {
+                        Log.w(TAG, "强制checkout后仍缺失的文件: ${stillMissing.joinToString(", ")}")
+                    } else {
+                        Log.d(TAG, "✓ 强制checkout后文件已完整")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "强制checkout失败", e)
+                }
+            }
+        }
+        if (extraInLocal.isNotEmpty()) {
+            Log.w(TAG, "本地多余的文件 (${extraInLocal.size} 个): ${extraInLocal.joinToString(", ")}")
+        }
+        if (missingInLocal.isEmpty() && extraInLocal.isEmpty() && remoteFiles.size == localFilesAfterPull.size) {
+            Log.d(TAG, "✓ 文件数量一致")
+        }
+        Log.d(TAG, "=====================================")
+
+        // 3. 处理拉取结果
+        when (pullResult) {
+            is SyncPullResult.Success -> {
+                syncListener?.onSyncProgress("拉取成功，Git自动合并完成")
+            }
+            is SyncPullResult.Conflict -> {
+                syncListener?.onSyncProgress("检测到冲突，正在处理...")
+                handleMergeConflict(pullResult)
+            }
+            is SyncPullResult.Error -> {
+                syncListener?.onSyncError("拉取失败: ${pullResult.errorMessage}")
+                isSyncing = false
+                return
+            }
+        }
+
+        // 4. 加载数据（必须在处理完冲突后）
+        loadDataFromGitToMemory()
+
+        // 5. 再次推送本地更改到远程（拉取后可能有新的本地更改需要推送，例如冲突解决后的本地修改）
+        pushToRemote()
+
+        // 整次同步流程全部结束后再通知成功，保证图标与真实状态一致
+        syncListener?.onSyncSuccess("同步成功")// 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
             val imagesDir = File(repoDir, DIR_IMAGES)
             if (!imagesDir.exists()) {
                 imagesDir.mkdirs()
