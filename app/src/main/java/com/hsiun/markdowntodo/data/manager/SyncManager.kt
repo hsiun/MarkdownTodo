@@ -1112,6 +1112,7 @@ class SyncManager(
             // 不需要在这里额外进行任何文件操作！
 
             // 3. 确保 images 目录存在（图片已经直接保存到这里，不需要复制）
+            val imagesDir = File(repoDir, DIR_IMAGES)
             if (!imagesDir.exists()) {
                 imagesDir.mkdirs()
                 Log.d(TAG, "创建 images 目录: ${imagesDir.absolutePath}")
