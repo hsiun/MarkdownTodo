@@ -636,13 +636,18 @@ class SyncManager(
                 if (existingTodo == null) {
                     mergedMap[ourTodo.uuid] = ourTodo
                 } else {
-                    // 比较更新时间，保留最新的
+                    // 存在冲突：合并两条记录
+                    // 规则1：如果两端完成状态不一致，统一设置为“已完成”（即只要有一端完成了，就视为完成）
+                    val isCompleted = ourTodo.isCompleted || existingTodo.isCompleted
+                    
+                    // 规则2：其他属性（如标题、提醒时间）保留更新时间最新的那一端
                     val ourTime = parseTodoUpdateTime(ourTodo)
                     val theirTime = parseTodoUpdateTime(existingTodo)
-
-                    if (ourTime > theirTime) {
-                        mergedMap[ourTodo.uuid] = ourTodo
-                    }
+                    
+                    val baseTodo = if (ourTime > theirTime) ourTodo else existingTodo
+                    
+                    // 应用合并后的状态
+                    mergedMap[ourTodo.uuid] = baseTodo.copy(isCompleted = isCompleted)
                 }
             }
 
