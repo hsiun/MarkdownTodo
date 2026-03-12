@@ -323,6 +323,7 @@ class SyncManager(
         pushToRemote()
 
         // 2.5. 拉取后立即检查Git目录中的文件
+        val remoteFiles = listRemoteNoteFiles()
         var localFilesAfterPull = listLocalFiles(notesDir, "拉取后本地")
 
         // 对比分析
